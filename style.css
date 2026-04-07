@@ -28,13 +28,13 @@ a {
 }
 
 .header-contact {
-  font-size: 8.5pt;
+  font-size: 0.895em;
   line-height: 1.4;
   margin-bottom: 2pt;
 }
 
 .header-name {
-  font-size: 22.5pt;
+  font-size: 2.368em;
   font-weight: bold;
   text-transform: uppercase;
   line-height: 1.15;
@@ -52,7 +52,7 @@ a {
 h2 {
   text-align: center;
   text-transform: uppercase;
-  font-size: 11pt;
+  font-size: 1.158em;
   font-weight: bold;
   letter-spacing: 0.5pt;
   border-bottom: 0.5pt double #171717;
@@ -74,12 +74,10 @@ h2 {
 .entry-title {
   font-weight: bold;
   text-transform: uppercase;
-  font-size: 9.5pt;
 }
 
 .entry-date {
   font-weight: bold;
-  font-size: 9.5pt;
   white-space: nowrap;
   flex-shrink: 0;
   margin-left: 8pt;

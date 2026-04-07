@@ -2,6 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Use the same Python that weasyprint is installed under
+WEASY_PYTHON="$(head -1 "$(which weasyprint)" | sed 's/^#!//')"
 INPUT_DIR="${1:-$SCRIPT_DIR/resumes}"
 OUTPUT_DIR="${2:-$SCRIPT_DIR/_output}"
 
@@ -20,7 +22,7 @@ build_one() {
     --css="$SCRIPT_DIR/style.css" \
     -o "$OUTPUT_DIR/$basename.html"
 
-  weasyprint "$OUTPUT_DIR/$basename.html" "$OUTPUT_DIR/$basename.pdf"
+  $WEASY_PYTHON "$SCRIPT_DIR/fit.py" "$OUTPUT_DIR/$basename.html" "$OUTPUT_DIR/$basename.pdf"
 
   pandoc "$input" \
     --lua-filter="$SCRIPT_DIR/filter.lua" \
