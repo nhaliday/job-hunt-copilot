@@ -2,31 +2,42 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-INPUT="${1:-$SCRIPT_DIR/resume.md}"
-BASENAME="$(basename "$INPUT" .md)"
+INPUT_DIR="${1:-$SCRIPT_DIR/resumes}"
 OUTPUT_DIR="${2:-$SCRIPT_DIR/_output}"
 
 mkdir -p "$OUTPUT_DIR"
 
-echo "Building from: $INPUT"
+build_one() {
+  local input="$1"
+  local basename
+  basename="$(basename "$input" .md)"
 
-# Generate HTML (intermediate for PDF)
-pandoc "$INPUT" \
-  --lua-filter="$SCRIPT_DIR/filter.lua" \
-  --template="$SCRIPT_DIR/template.html" \
-  --css="$SCRIPT_DIR/style.css" \
-  -o "$OUTPUT_DIR/$BASENAME.html"
+  echo "  $basename"
 
-# Generate PDF via WeasyPrint
-weasyprint "$OUTPUT_DIR/$BASENAME.html" "$OUTPUT_DIR/$BASENAME.pdf"
+  pandoc "$input" \
+    --lua-filter="$SCRIPT_DIR/filter.lua" \
+    --template="$SCRIPT_DIR/template.html" \
+    --css="$SCRIPT_DIR/style.css" \
+    -o "$OUTPUT_DIR/$basename.html"
 
-# Generate DOCX using sample as reference for styles
-pandoc "$INPUT" \
-  --lua-filter="$SCRIPT_DIR/filter.lua" \
-  --reference-doc="$SCRIPT_DIR/reference.docx" \
-  -o "$OUTPUT_DIR/$BASENAME.docx"
+  weasyprint "$OUTPUT_DIR/$basename.html" "$OUTPUT_DIR/$basename.pdf"
 
-echo "Done:"
-echo "  PDF:  $OUTPUT_DIR/$BASENAME.pdf"
-echo "  DOCX: $OUTPUT_DIR/$BASENAME.docx"
-echo "  HTML: $OUTPUT_DIR/$BASENAME.html"
+  pandoc "$input" \
+    --lua-filter="$SCRIPT_DIR/filter.lua" \
+    --reference-doc="$SCRIPT_DIR/reference.docx" \
+    -o "$OUTPUT_DIR/$basename.docx"
+}
+
+count=0
+for md in "$INPUT_DIR"/*.md; do
+  [ -f "$md" ] || continue
+  build_one "$md"
+  count=$((count + 1))
+done
+
+if [ "$count" -eq 0 ]; then
+  echo "No .md files found in $INPUT_DIR" >&2
+  exit 1
+fi
+
+echo "Built $count resume(s) → $OUTPUT_DIR/"
