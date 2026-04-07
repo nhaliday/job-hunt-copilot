@@ -1,0 +1,125 @@
+@import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+
+@page {
+  size: A4;
+  margin: 11mm 15mm;
+}
+
+body {
+  font-family: "EB Garamond", Garamond, "Palatino Linotype", Palatino, Georgia, serif;
+  font-size: 9.5pt;
+  line-height: 1.29;
+  color: #171717;
+  margin: 0;
+}
+
+a {
+  color: #171717;
+  text-decoration: none;
+}
+
+/* --- Header --- */
+
+.resume-header {
+  text-align: center;
+  border-top: 0.5pt double #171717;
+  padding-top: 6pt;
+  margin-bottom: 4pt;
+}
+
+.header-contact {
+  font-size: 8.5pt;
+  line-height: 1.4;
+  margin-bottom: 2pt;
+}
+
+.header-name {
+  font-size: 22.5pt;
+  font-weight: bold;
+  text-transform: uppercase;
+  line-height: 1.15;
+  letter-spacing: 0.5pt;
+}
+
+.header-subtitle {
+  font-style: italic;
+  margin-top: 0;
+  margin-bottom: 6pt;
+}
+
+/* --- Section headings --- */
+
+h2 {
+  text-align: center;
+  text-transform: uppercase;
+  font-size: 11pt;
+  font-weight: bold;
+  letter-spacing: 0.5pt;
+  border-bottom: 0.5pt double #171717;
+  padding-bottom: 4pt;
+  margin-top: 12pt;
+  margin-bottom: 6pt;
+}
+
+/* --- Entry header (title + date) --- */
+
+.entry-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-top: 2pt;
+  margin-bottom: 0;
+}
+
+.entry-title {
+  font-weight: bold;
+  text-transform: uppercase;
+  font-size: 9.5pt;
+}
+
+.entry-date {
+  font-weight: bold;
+  font-size: 9.5pt;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-left: 8pt;
+}
+
+/* --- Entry org (company + location) --- */
+
+.entry-org {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 3pt;
+}
+
+.entry-org-name {
+  font-weight: bold;
+  font-style: italic;
+}
+
+.entry-org-location {
+  font-weight: bold;
+  font-style: italic;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-left: 8pt;
+}
+
+/* --- Bullet lists --- */
+
+ul {
+  list-style-type: "♦  ";
+  margin-top: 1pt;
+  margin-bottom: 2pt;
+  padding-left: 14pt;
+}
+
+li {
+  margin-bottom: 0.5pt;
+}
+
+li p {
+  margin: 0;
+}

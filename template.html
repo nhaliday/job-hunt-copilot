@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+$for(css)$
+<link rel="stylesheet" href="$css$">
+$endfor$
+</head>
+<body>
+<header class="resume-header">
+$if(email)$
+  <div class="header-contact">
+    <a href="mailto:$email$">$email$</a> &bull; <a href="tel:$phone$">$phone$</a>
+  </div>
+$endif$
+$if(name)$
+  <div class="header-name">$name$</div>
+$endif$
+$if(subtitle)$
+  <div class="header-subtitle">$subtitle$</div>
+$endif$
+</header>
+$body$
+</body>
+</html>
