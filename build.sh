@@ -28,6 +28,56 @@ build_one() {
     --lua-filter="$SCRIPT_DIR/filter.lua" \
     --reference-doc="$SCRIPT_DIR/reference.docx" \
     -o "$OUTPUT_DIR/$basename.docx"
+
+  smoke_test "$OUTPUT_DIR/$basename.pdf" "$input"
+}
+
+smoke_test() {
+  local pdf="$1"
+  local md="$2"
+  local text warn=0
+
+  text="$(pdftotext "$pdf" -)"
+
+  # Section headers should be extractable
+  for section in "SKILLS" "EMPLOYMENT HISTORY" "EDUCATION"; do
+    if ! echo "$text" | grep -q "$section"; then
+      echo "    WARN: section '$section' not found in text extraction" >&2
+      warn=1
+    fi
+  done
+
+  # Name from YAML frontmatter should appear
+  local name
+  name="$(sed -n 's/^name: *//p' "$md" | head -1)"
+  if [ -n "$name" ] && ! echo "$text" | grep -qi "$name"; then
+    echo "    WARN: name '$name' not found in text extraction" >&2
+    warn=1
+  fi
+
+  # Contact info should appear
+  local email
+  email="$(sed -n 's/^email: *//p' "$md" | head -1)"
+  if [ -n "$email" ] && ! echo "$text" | grep -q "$email"; then
+    echo "    WARN: email '$email' not found in text extraction" >&2
+    warn=1
+  fi
+
+  # Bullet markers should be present
+  if ! echo "$text" | grep -q '♦'; then
+    echo "    WARN: bullet marker ♦ not found in text extraction" >&2
+    warn=1
+  fi
+
+  # Bullet text should be inline (not just bare markers)
+  if echo "$text" | grep -qE '^♦[[:space:]]*$'; then
+    echo "    WARN: bullet markers detached from text (ATS may misparse)" >&2
+    warn=1
+  fi
+
+  if [ "$warn" -eq 0 ]; then
+    echo "    ATS smoke test passed"
+  fi
 }
 
 count=0
