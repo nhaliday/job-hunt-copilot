@@ -63,6 +63,14 @@ smoke_test() {
     warn=1
   fi
 
+  # Entry headers should extract with title and date on the same line (layout mode)
+  local layout_text
+  layout_text="$(pdftotext -layout "$pdf" -)"
+  if ! echo "$layout_text" | grep -qE '^.{10,}(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) [0-9]{4}'; then
+    echo "    WARN: entry title and date not on same line in layout extraction" >&2
+    warn=1
+  fi
+
   # Bullet markers should be present
   if ! echo "$text" | grep -q '♦'; then
     echo "    WARN: bullet marker ♦ not found in text extraction" >&2

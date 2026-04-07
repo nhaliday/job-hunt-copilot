@@ -61,14 +61,25 @@ h2 {
   margin-bottom: 6pt;
 }
 
-/* --- Entry header (title + date) --- */
+/* --- Entry tables (title+date, org+location) --- */
 
-.entry-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  margin-top: 2pt;
-  margin-bottom: 0;
+.entry-header,
+.entry-org {
+  width: 100%;
+  border-collapse: collapse;
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.entry-header { margin-top: 2pt; }
+.entry-org { margin-bottom: 3pt; }
+
+.entry-header td,
+.entry-org td {
+  border: none;
+  padding: 0;
+  vertical-align: baseline;
 }
 
 .entry-title {
@@ -79,17 +90,7 @@ h2 {
 .entry-date {
   font-weight: bold;
   white-space: nowrap;
-  flex-shrink: 0;
-  margin-left: 8pt;
-}
-
-/* --- Entry org (company + location) --- */
-
-.entry-org {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: 3pt;
+  text-align: right;
 }
 
 .entry-org-name {
@@ -101,8 +102,7 @@ h2 {
   font-weight: bold;
   font-style: italic;
   white-space: nowrap;
-  flex-shrink: 0;
-  margin-left: 8pt;
+  text-align: right;
 }
 
 /* --- Bullet lists --- */

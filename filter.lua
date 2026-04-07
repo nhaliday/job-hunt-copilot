@@ -99,11 +99,10 @@ function Pandoc(doc)
       if date_inlines then
         if is_html then
           new_blocks:insert(pandoc.RawBlock('html',
-            '<div class="entry-header"><span class="entry-title">' ..
-            stringify(title_inlines) ..
-            '</span><span class="entry-date">' ..
-            stringify(date_inlines) ..
-            '</span></div>'
+            '<table class="entry-header"><tr>' ..
+            '<td class="entry-title">' .. stringify(title_inlines) .. '</td>' ..
+            '<td class="entry-date">' .. stringify(date_inlines) .. '</td>' ..
+            '</tr></table>'
           ))
         elseif is_docx then
           new_blocks:insert(make_two_col_table(
@@ -120,11 +119,10 @@ function Pandoc(doc)
           if loc_inlines then
             if is_html then
               new_blocks:insert(pandoc.RawBlock('html',
-                '<div class="entry-org"><span class="entry-org-name">' ..
-                stringify(strip_emphasis(org_inlines)) ..
-                '</span><span class="entry-org-location">' ..
-                stringify(loc_inlines) ..
-                '</span></div>'
+                '<table class="entry-org"><tr>' ..
+                '<td class="entry-org-name">' .. stringify(strip_emphasis(org_inlines)) .. '</td>' ..
+                '<td class="entry-org-location">' .. stringify(loc_inlines) .. '</td>' ..
+                '</tr></table>'
               ))
             elseif is_docx then
               new_blocks:insert(make_two_col_table(
