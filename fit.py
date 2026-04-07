@@ -15,7 +15,7 @@ def render(html_path, font_size_pt):
     return HTML(string=html, base_url=os.path.dirname(os.path.abspath(html_path))).render()
 
 
-def find_max_font_size(html_path, target_pages=1, lo=6.0, hi=16.0, precision=0.01):
+def find_max_font_size(html_path, target_pages=1, lo=10.0, hi=12.0, precision=0.01):
     """Binary search for the largest body font-size that fits in target_pages."""
     while hi - lo > precision:
         mid = (lo + hi) / 2
@@ -34,8 +34,8 @@ def main():
     parser.add_argument("html", help="Input HTML file")
     parser.add_argument("pdf", help="Output PDF file")
     parser.add_argument("--pages", type=int, default=1, help="Target page count (default: 1)")
-    parser.add_argument("--min-pt", type=float, default=6.0, help="Minimum font size to try")
-    parser.add_argument("--max-pt", type=float, default=16.0, help="Maximum font size to try")
+    parser.add_argument("--min-pt", type=float, default=10.0, help="Minimum font size to try")
+    parser.add_argument("--max-pt", type=float, default=12.0, help="Maximum font size to try")
     args = parser.parse_args()
 
     optimal = find_max_font_size(args.html, args.pages, args.min_pt, args.max_pt)
