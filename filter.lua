@@ -1,5 +1,5 @@
 -- resume-filter.lua
--- Transforms resume Markdown into formatted HTML (for WeasyPrint PDF) and DOCX
+-- Transforms resume Markdown into formatted HTML for WeasyPrint PDF generation
 
 local function stringify(inlines)
   return pandoc.utils.stringify(pandoc.Inlines(inlines))
@@ -37,56 +37,9 @@ local function strip_emphasis(inlines)
   return result
 end
 
--- Create a borderless two-column Pandoc Table (for DOCX output)
-local function make_two_col_table(left_inlines, right_inlines)
-  local simple = pandoc.SimpleTable(
-    {},
-    {pandoc.AlignLeft, pandoc.AlignRight},
-    {0, 0},
-    {{}, {}},
-    {
-      {{pandoc.Plain(left_inlines)}, {pandoc.Plain(right_inlines)}}
-    }
-  )
-  return pandoc.utils.from_simple_table(simple)
-end
-
 function Pandoc(doc)
-  local meta = doc.meta
   local blocks = doc.blocks
   local new_blocks = pandoc.List()
-  local is_html = FORMAT:match('html')
-  local is_docx = FORMAT:match('docx')
-
-  -- For DOCX: inject header from YAML metadata
-  if is_docx then
-    local email = pandoc.utils.stringify(meta.email or "")
-    local phone = pandoc.utils.stringify(meta.phone or "")
-    local name = pandoc.utils.stringify(meta.name or "")
-    local subtitle = pandoc.utils.stringify(meta.subtitle or "")
-
-    if email ~= "" then
-      new_blocks:insert(pandoc.Div(
-        {pandoc.Para({
-          pandoc.Link(pandoc.Str(email), "mailto:" .. email),
-          pandoc.Space(), pandoc.Str("•"), pandoc.Space(),
-          pandoc.Link(pandoc.Str(phone), "tel:" .. phone)
-        })},
-        pandoc.Attr("", {}, {{"custom-style", "headerDetails"}})
-      ))
-    end
-
-    if name ~= "" then
-      new_blocks:insert(pandoc.Header(1, pandoc.Inlines({pandoc.Str(name)})))
-    end
-
-    if subtitle ~= "" then
-      new_blocks:insert(pandoc.Div(
-        {pandoc.Para({pandoc.Str(subtitle)})},
-        pandoc.Attr("", {}, {{"custom-style", "headerPosition"}})
-      ))
-    end
-  end
 
   -- Walk blocks: transform H3 entries and org/location lines
   local i = 1
@@ -97,39 +50,23 @@ function Pandoc(doc)
       local title_inlines, date_inlines = split_at_span(block.content, "date")
 
       if date_inlines then
-        if is_html then
-          new_blocks:insert(pandoc.RawBlock('html',
-            '<table class="entry-header"><tr>' ..
-            '<td class="entry-title">' .. stringify(title_inlines) .. '</td>' ..
-            '<td class="entry-date">' .. stringify(date_inlines) .. '</td>' ..
-            '</tr></table>'
-          ))
-        elseif is_docx then
-          new_blocks:insert(make_two_col_table(
-            {pandoc.Strong(strip_emphasis(title_inlines))},
-            {pandoc.Strong(date_inlines)}
-          ))
-        else
-          new_blocks:insert(block)
-        end
+        new_blocks:insert(pandoc.RawBlock('html',
+          '<table class="entry-header"><tr>' ..
+          '<td class="entry-title">' .. stringify(title_inlines) .. '</td>' ..
+          '<td class="entry-date">' .. stringify(date_inlines) .. '</td>' ..
+          '</tr></table>'
+        ))
 
         -- Check if next block is a Para with .location span
         if i + 1 <= #blocks and blocks[i + 1].t == "Para" then
           local org_inlines, loc_inlines = split_at_span(blocks[i + 1].content, "location")
           if loc_inlines then
-            if is_html then
-              new_blocks:insert(pandoc.RawBlock('html',
-                '<table class="entry-org"><tr>' ..
-                '<td class="entry-org-name">' .. stringify(strip_emphasis(org_inlines)) .. '</td>' ..
-                '<td class="entry-org-location">' .. stringify(loc_inlines) .. '</td>' ..
-                '</tr></table>'
-              ))
-            elseif is_docx then
-              new_blocks:insert(make_two_col_table(
-                {pandoc.Strong({pandoc.Emph(strip_emphasis(org_inlines))})},
-                {pandoc.Strong({pandoc.Emph(loc_inlines)})}
-              ))
-            end
+            new_blocks:insert(pandoc.RawBlock('html',
+              '<table class="entry-org"><tr>' ..
+              '<td class="entry-org-name">' .. stringify(strip_emphasis(org_inlines)) .. '</td>' ..
+              '<td class="entry-org-location">' .. stringify(loc_inlines) .. '</td>' ..
+              '</tr></table>'
+            ))
             i = i + 1  -- skip the org/location Para
           end
         end

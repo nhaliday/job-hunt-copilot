@@ -24,11 +24,6 @@ build_one() {
 
   $WEASY_PYTHON "$SCRIPT_DIR/fit.py" "$OUTPUT_DIR/$basename.html" "$OUTPUT_DIR/$basename.pdf"
 
-  pandoc "$input" \
-    --lua-filter="$SCRIPT_DIR/filter.lua" \
-    --reference-doc="$SCRIPT_DIR/reference.docx" \
-    -o "$OUTPUT_DIR/$basename.docx"
-
   smoke_test "$OUTPUT_DIR/$basename.pdf" "$input"
 }
 
