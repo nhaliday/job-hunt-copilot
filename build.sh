@@ -9,6 +9,23 @@ OUTPUT_DIR="${2:-$SCRIPT_DIR/_output}"
 
 mkdir -p "$OUTPUT_DIR"
 
+# Shared dependencies: if any of these change, all PDFs must rebuild
+DEPS=(
+  "$SCRIPT_DIR/filter.lua"
+  "$SCRIPT_DIR/template.html"
+  "$SCRIPT_DIR/style.css"
+  "$SCRIPT_DIR/fit.py"
+)
+
+# Return 0 (true) if pdf exists and is newer than the .md and all shared deps
+is_up_to_date() {
+  local pdf="$1" md="$2"
+  [ -f "$pdf" ] || return 1
+  for dep in "$md" "${DEPS[@]}"; do
+    [ "$pdf" -nt "$dep" ] || return 1
+  done
+}
+
 build_one() {
   local input="$1"
   local basename
@@ -83,16 +100,23 @@ smoke_test() {
   fi
 }
 
-count=0
+built=0
+skipped=0
 for md in "$INPUT_DIR"/*.md; do
   [ -f "$md" ] || continue
-  build_one "$md"
-  count=$((count + 1))
+  basename="$(basename "$md" .md)"
+  if is_up_to_date "$OUTPUT_DIR/$basename.pdf" "$md"; then
+    echo "  $basename (up to date)"
+    skipped=$((skipped + 1))
+  else
+    build_one "$md"
+    built=$((built + 1))
+  fi
 done
 
-if [ "$count" -eq 0 ]; then
+if [ "$((built + skipped))" -eq 0 ]; then
   echo "No .md files found in $INPUT_DIR" >&2
   exit 1
 fi
 
-echo "Built $count resume(s) → $OUTPUT_DIR/"
+echo "Built $built, skipped $skipped → $OUTPUT_DIR/"
