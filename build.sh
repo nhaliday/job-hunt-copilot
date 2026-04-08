@@ -100,23 +100,57 @@ smoke_test() {
   fi
 }
 
-built=0
+TMPDIR_BUILD="$(mktemp -d)"
+trap 'rm -rf "$TMPDIR_BUILD"' EXIT
+LOCK="$TMPDIR_BUILD/lock"
+
+# Acquire/release a mutex for sequential stdout output
+lock()   { while ! mkdir "$LOCK" 2>/dev/null; do sleep 0.05; done; }
+unlock() { rmdir "$LOCK"; }
+
+# Wrapper: build, then print output atomically under lock
+build_worker() {
+  local md="$1"
+  local log="$TMPDIR_BUILD/$(basename "$md" .md).log"
+  local rc=0
+  build_one "$md" >"$log" 2>&1 || rc=$?
+  lock
+  cat "$log"
+  unlock
+  return "$rc"
+}
+
+pids=()
+total=0
 skipped=0
+started=0
+
 for md in "$INPUT_DIR"/*.md; do
   [ -f "$md" ] || continue
+  total=$((total + 1))
   basename="$(basename "$md" .md)"
+
   if is_up_to_date "$OUTPUT_DIR/$basename.pdf" "$md"; then
     echo "  $basename (up to date)"
     skipped=$((skipped + 1))
   else
-    build_one "$md"
-    built=$((built + 1))
+    build_worker "$md" &
+    pids+=("$!")
+    started=$((started + 1))
   fi
 done
 
-if [ "$((built + skipped))" -eq 0 ]; then
+if [ "$total" -eq 0 ]; then
   echo "No .md files found in $INPUT_DIR" >&2
   exit 1
 fi
 
+# Wait for all background jobs
+failed=0
+for pid in ${pids[@]+"${pids[@]}"}; do
+  wait "$pid" || failed=$((failed + 1))
+done
+
+built=$((started - failed))
 echo "Built $built, skipped $skipped → $OUTPUT_DIR/"
+[ "$failed" -eq 0 ]
