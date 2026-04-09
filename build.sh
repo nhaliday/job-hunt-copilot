@@ -2,8 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-# Use the same Python that weasyprint is installed under
-WEASY_PYTHON="$(head -1 "$(which weasyprint)" | sed 's/^#!//')"
+# Use the project's uv-managed Python (has weasyprint + pdfplumber)
+WEASY_PYTHON="$SCRIPT_DIR/.venv/bin/python"
 INPUT_DIR="${1:-$SCRIPT_DIR/resumes}"
 OUTPUT_DIR="${2:-$SCRIPT_DIR/_output}"
 
@@ -15,6 +15,7 @@ DEPS=(
   "$SCRIPT_DIR/template.html"
   "$SCRIPT_DIR/style.css"
   "$SCRIPT_DIR/fit.py"
+  "$SCRIPT_DIR/verify_lines.py"
 )
 
 # Return 0 (true) if pdf exists and is newer than the .md and all shared deps
@@ -153,4 +154,8 @@ done
 
 built=$((started - failed))
 echo "Built $built, skipped $skipped → $OUTPUT_DIR/"
-[ "$failed" -eq 0 ]
+[ "$failed" -eq 0 ] || exit 1
+
+# Verify section separator lines rendered in all PDFs
+echo "Verifying section separators..."
+$WEASY_PYTHON "$SCRIPT_DIR/verify_lines.py"

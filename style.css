@@ -55,8 +55,8 @@ h2 {
   font-size: 1.158em;
   font-weight: bold;
   letter-spacing: 0.5pt;
-  border-bottom: none;
-  padding-bottom: 0;
+  border-bottom: 0.5pt double #171717;
+  padding-bottom: 4pt;
   margin-top: 12pt;
   margin-bottom: 6pt;
 }
