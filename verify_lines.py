@@ -1,11 +1,13 @@
 """Verify that each ## heading in the Markdown source has a corresponding
 horizontal separator line in the rendered PDF.
 
-WeasyPrint renders CSS borders as filled rectangles. A `border-bottom: Xpt solid`
+WeasyPrint renders CSS borders as filled rectangles. A `border-bottom: Xpt`
 on an h2 produces a pair of full-width rects at the same top position: one for
 the content box and one Xpt taller including the border. We detect h2 borders
 by grouping full-width rects by top position and counting groups (excluding the
 header top-border group near the page top).
+
+Usage: verify_lines.py <pdf> <md>
 """
 
 import re
@@ -32,12 +34,10 @@ def count_h2_borders(pdf_path: Path, min_width: float = 400) -> int:
                 if w < min_width:
                     continue
                 top = rect["top"]
-                # Skip header border (near top of page)
                 if top < HEADER_Y_THRESHOLD:
                     continue
-                # Group rects within 2pt of each other
                 merged = False
-                for i, g in enumerate(groups):
+                for g in groups:
                     if abs(top - g) < 2:
                         merged = True
                         break
@@ -46,27 +46,17 @@ def count_h2_borders(pdf_path: Path, min_width: float = 400) -> int:
     return len(groups)
 
 
-def main():
-    resumes_dir = Path(__file__).parent / "resumes"
-    output_dir = Path(__file__).parent / "_output"
-    ok = True
-
-    for md in sorted(resumes_dir.glob("*.md")):
-        pdf = output_dir / f"{md.stem}.pdf"
-        if not pdf.exists():
-            print(f"  {md.stem}: SKIP (no PDF)")
-            continue
-
-        expected = count_md_h2(md)
-        actual = count_h2_borders(pdf)
-
-        status = "OK" if actual == expected else "FAIL"
-        if actual != expected:
-            ok = False
-        print(f"  {md.stem}: {status} (expected {expected} h2 borders, found {actual})")
-
-    sys.exit(0 if ok else 1)
+def verify(pdf_path: Path, md_path: Path) -> bool:
+    expected = count_md_h2(md_path)
+    actual = count_h2_borders(pdf_path)
+    ok = actual == expected
+    status = "OK" if ok else "FAIL"
+    print(f"    separators: {status} (expected {expected}, found {actual})")
+    return ok
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) != 3:
+        print(f"Usage: {sys.argv[0]} <pdf> <md>", file=sys.stderr)
+        sys.exit(2)
+    sys.exit(0 if verify(Path(sys.argv[1]), Path(sys.argv[2])) else 1)

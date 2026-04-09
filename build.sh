@@ -43,6 +43,7 @@ build_one() {
   $WEASY_PYTHON "$SCRIPT_DIR/fit.py" "$OUTPUT_DIR/$basename.html" "$OUTPUT_DIR/$basename.pdf"
 
   smoke_test "$OUTPUT_DIR/$basename.pdf" "$input"
+  $WEASY_PYTHON "$SCRIPT_DIR/verify_lines.py" "$OUTPUT_DIR/$basename.pdf" "$input"
 }
 
 smoke_test() {
@@ -154,8 +155,4 @@ done
 
 built=$((started - failed))
 echo "Built $built, skipped $skipped → $OUTPUT_DIR/"
-[ "$failed" -eq 0 ] || exit 1
-
-# Verify section separator lines rendered in all PDFs
-echo "Verifying section separators..."
-$WEASY_PYTHON "$SCRIPT_DIR/verify_lines.py"
+[ "$failed" -eq 0 ]
