@@ -16,34 +16,34 @@ DEPS=(
   "$SCRIPT_DIR/style.css"
   "$SCRIPT_DIR/fit.py"
   "$SCRIPT_DIR/verify_lines.py"
+  "$SCRIPT_DIR/render_variants.py"
 )
 
-# Return 0 (true) if pdf exists and is newer than the .md and all shared deps
+# Return 0 (true) if pdf exists and is newer than all given source paths and shared deps
 is_up_to_date() {
-  local pdf="$1" md="$2"
+  local pdf="$1"; shift
   [ -f "$pdf" ] || return 1
-  for dep in "$md" "${DEPS[@]}"; do
+  for dep in "$@" "${DEPS[@]}"; do
     [ "$pdf" -nt "$dep" ] || return 1
   done
 }
 
 build_one() {
   local input="$1"
-  local basename
-  basename="$(basename "$input" .md)"
+  local out_name="$2"
 
-  echo "  $basename"
+  echo "  $out_name"
 
   pandoc "$input" \
     --lua-filter="$SCRIPT_DIR/filter.lua" \
     --template="$SCRIPT_DIR/template.html" \
     --css="$SCRIPT_DIR/style.css" \
-    -o "$OUTPUT_DIR/$basename.html"
+    -o "$OUTPUT_DIR/$out_name.html"
 
-  $WEASY_PYTHON "$SCRIPT_DIR/fit.py" "$OUTPUT_DIR/$basename.html" "$OUTPUT_DIR/$basename.pdf"
+  $WEASY_PYTHON "$SCRIPT_DIR/fit.py" "$OUTPUT_DIR/$out_name.html" "$OUTPUT_DIR/$out_name.pdf"
 
-  smoke_test "$OUTPUT_DIR/$basename.pdf" "$input"
-  $WEASY_PYTHON "$SCRIPT_DIR/verify_lines.py" "$OUTPUT_DIR/$basename.pdf" "$input"
+  smoke_test "$OUTPUT_DIR/$out_name.pdf" "$input"
+  $WEASY_PYTHON "$SCRIPT_DIR/verify_lines.py" "$OUTPUT_DIR/$out_name.pdf" "$input"
 }
 
 smoke_test() {
@@ -113,9 +113,10 @@ unlock() { rmdir "$LOCK"; }
 # Wrapper: build, then print output atomically under lock
 build_worker() {
   local md="$1"
-  local log="$TMPDIR_BUILD/$(basename "$md" .md).log"
+  local out_name="$2"
+  local log="$TMPDIR_BUILD/$out_name.log"
   local rc=0
-  build_one "$md" >"$log" 2>&1 || rc=$?
+  build_one "$md" "$out_name" >"$log" 2>&1 || rc=$?
   lock
   cat "$log"
   unlock
@@ -127,18 +128,32 @@ total=0
 skipped=0
 started=0
 
-for md in "$INPUT_DIR"/*.md; do
-  [ -f "$md" ] || continue
+schedule() {
+  # schedule <output_name> <input_md> <source_md_for_mtime> [extra_dep ...]
+  local out_name="$1" input_md="$2"; shift 2
   total=$((total + 1))
-  basename="$(basename "$md" .md)"
-
-  if is_up_to_date "$OUTPUT_DIR/$basename.pdf" "$md"; then
-    echo "  $basename (up to date)"
+  if is_up_to_date "$OUTPUT_DIR/$out_name.pdf" "$@"; then
+    echo "  $out_name (up to date)"
     skipped=$((skipped + 1))
   else
-    build_worker "$md" &
+    build_worker "$input_md" "$out_name" &
     pids+=("$!")
     started=$((started + 1))
+  fi
+}
+
+for md in "$INPUT_DIR"/*.md; do
+  [ -f "$md" ] || continue
+  basename="$(basename "$md" .md)"
+  variants_file="$INPUT_DIR/$basename.variants.toml"
+
+  if [ -f "$variants_file" ]; then
+    # Render all variants of this resume into TMPDIR_BUILD (synchronous, fast)
+    while IFS= read -r vname; do
+      schedule "$vname" "$TMPDIR_BUILD/$vname.md" "$md" "$variants_file"
+    done < <($WEASY_PYTHON "$SCRIPT_DIR/render_variants.py" "$md" "$variants_file" "$TMPDIR_BUILD")
+  else
+    schedule "$basename" "$md" "$md"
   fi
 done
 
