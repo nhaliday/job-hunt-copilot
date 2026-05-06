@@ -30,14 +30,21 @@ pandoc resumes/resume-teaching.md --lua-filter=filter.lua --template=template.ht
    using per-doc-type template + CSS (and `filter.lua` for resumes only)
 2. **fit.py** binary-searches font size (10–12pt) to fit exactly 1 page, renders
    PDF via WeasyPrint
-3. **post_build** is per-doc-type:
+3. **post_build** runs after each PDF (or on cached PDFs that didn't need
+   rebuilding):
+   - **all**: `verify_pages.py` (warns if PDF exceeds 1 page; never fails the
+     build)
    - **resume**: `smoke_test` (pdftotext checks for ATS readability — section
      headers, name, email, bullet markers, title/date alignment) +
-     `verify_lines.py` (pdfplumber confirms h2 separator lines)
-   - **letter**: no checks (cover letters aren't ATS-filtered)
+     `verify_lines.py` (pdfplumber confirms h2 separator lines; this one DOES
+     fail the build on mismatch)
+   - **letter**: no extra checks beyond the page count (cover letters aren't
+     ATS-filtered)
 
 Builds are incremental (mtime of PDF vs source + per-type deps) and parallel
-(background jobs with mkdir-based stdout mutex). Variants (via
+(background jobs with mkdir-based stdout mutex). Post-build checks run on cached
+PDFs too, so editing `verify_pages.py`/`verify_lines.py`/the smoke test re-runs
+on the next `./build.sh` without forcing a rebuild. Variants (via
 `*.variants.toml` + `render_variants.py`) currently only used for resumes.
 
 ## Doc Types

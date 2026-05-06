@@ -29,8 +29,6 @@ build_one() {
   local input="$1"
   local out_name="$2"
 
-  echo "  $DOC_TYPE/$out_name"
-
   local pandoc_args=(
     "$input"
     --template="$TEMPLATE"
@@ -41,12 +39,13 @@ build_one() {
   pandoc "${pandoc_args[@]}"
 
   $WEASY_PYTHON "$SCRIPT_DIR/fit.py" "$OUT_SUBDIR/$out_name.html" "$OUT_SUBDIR/$out_name.pdf"
-
-  post_build "$OUT_SUBDIR/$out_name.pdf" "$input"
 }
 
+# Run all post-build checks. Page count is checked for both types (warn-only).
+# Resumes additionally get an ATS smoke test and h2-separator verification.
 post_build() {
   local pdf="$1" md="$2"
+  $WEASY_PYTHON "$SCRIPT_DIR/verify_pages.py" "$pdf"
   case "$DOC_TYPE" in
     resume)
       smoke_test "$pdf" "$md"
@@ -121,13 +120,22 @@ LOCK="$TMPDIR_BUILD/lock"
 lock()   { while ! mkdir "$LOCK" 2>/dev/null; do sleep 0.05; done; }
 unlock() { rmdir "$LOCK"; }
 
-# Wrapper: build, then print output atomically under lock
+# Wrapper: optionally build, then run checks, then print output atomically under lock
 build_worker() {
   local md="$1"
   local out_name="$2"
+  local needs_build="$3"
   local log="$TMPDIR_BUILD/$DOC_TYPE-$out_name.log"
   local rc=0
-  build_one "$md" "$out_name" >"$log" 2>&1 || rc=$?
+  {
+    if [ "$needs_build" = 1 ]; then
+      echo "  $DOC_TYPE/$out_name"
+      build_one "$md" "$out_name"
+    else
+      echo "  $DOC_TYPE/$out_name (cached)"
+    fi
+    post_build "$OUT_SUBDIR/$out_name.pdf" "$md"
+  } >"$log" 2>&1 || rc=$?
   lock
   cat "$log"
   unlock
@@ -142,15 +150,16 @@ started=0
 schedule() {
   # schedule <output_name> <input_md> <source_md_for_mtime> [extra_dep ...]
   local out_name="$1" input_md="$2"; shift 2
+  local needs_build=1
   total=$((total + 1))
   if is_up_to_date "$OUT_SUBDIR/$out_name.pdf" "$@"; then
-    echo "  $DOC_TYPE/$out_name (up to date)"
+    needs_build=0
     skipped=$((skipped + 1))
   else
-    build_worker "$input_md" "$out_name" &
-    pids+=("$!")
     started=$((started + 1))
   fi
+  build_worker "$input_md" "$out_name" "$needs_build" &
+  pids+=("$!")
 }
 
 # Build a directory of source .md files into _output/<doc_type>s/.
@@ -188,7 +197,6 @@ build_dir resume "$SCRIPT_DIR/resumes" \
   "$SCRIPT_DIR/template.html" \
   "$SCRIPT_DIR/style.css" \
   "$SCRIPT_DIR/filter.lua" \
-  "$SCRIPT_DIR/verify_lines.py" \
   "$SCRIPT_DIR/render_variants.py"
 
 build_dir letter "$SCRIPT_DIR/letters" \
