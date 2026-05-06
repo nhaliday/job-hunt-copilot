@@ -4,20 +4,17 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Use the project's uv-managed Python (has weasyprint + pdfplumber)
 WEASY_PYTHON="$SCRIPT_DIR/.venv/bin/python"
-INPUT_DIR="${1:-$SCRIPT_DIR/resumes}"
-OUTPUT_DIR="${2:-$SCRIPT_DIR/_output}"
+OUTPUT_ROOT="${1:-$SCRIPT_DIR/_output}"
 
-mkdir -p "$OUTPUT_DIR"
+mkdir -p "$OUTPUT_ROOT"
 
-# Shared dependencies: if any of these change, all PDFs must rebuild
-DEPS=(
-  "$SCRIPT_DIR/filter.lua"
-  "$SCRIPT_DIR/template.html"
-  "$SCRIPT_DIR/style.css"
-  "$SCRIPT_DIR/fit.py"
-  "$SCRIPT_DIR/verify_lines.py"
-  "$SCRIPT_DIR/render_variants.py"
-)
+# Per-call globals set by build_dir, read by build_one/schedule/post_build
+DOC_TYPE=
+TEMPLATE=
+CSS=
+FILTER=
+OUT_SUBDIR=
+DEPS=()
 
 # Return 0 (true) if pdf exists and is newer than all given source paths and shared deps
 is_up_to_date() {
@@ -32,18 +29,32 @@ build_one() {
   local input="$1"
   local out_name="$2"
 
-  echo "  $out_name"
+  echo "  $DOC_TYPE/$out_name"
 
-  pandoc "$input" \
-    --lua-filter="$SCRIPT_DIR/filter.lua" \
-    --template="$SCRIPT_DIR/template.html" \
-    --css="$SCRIPT_DIR/style.css" \
-    -o "$OUTPUT_DIR/$out_name.html"
+  local pandoc_args=(
+    "$input"
+    --template="$TEMPLATE"
+    --css="$CSS"
+    -o "$OUT_SUBDIR/$out_name.html"
+  )
+  [ -n "$FILTER" ] && pandoc_args+=(--lua-filter="$FILTER")
+  pandoc "${pandoc_args[@]}"
 
-  $WEASY_PYTHON "$SCRIPT_DIR/fit.py" "$OUTPUT_DIR/$out_name.html" "$OUTPUT_DIR/$out_name.pdf"
+  $WEASY_PYTHON "$SCRIPT_DIR/fit.py" "$OUT_SUBDIR/$out_name.html" "$OUT_SUBDIR/$out_name.pdf"
 
-  smoke_test "$OUTPUT_DIR/$out_name.pdf" "$input"
-  $WEASY_PYTHON "$SCRIPT_DIR/verify_lines.py" "$OUTPUT_DIR/$out_name.pdf" "$input"
+  post_build "$OUT_SUBDIR/$out_name.pdf" "$input"
+}
+
+post_build() {
+  local pdf="$1" md="$2"
+  case "$DOC_TYPE" in
+    resume)
+      smoke_test "$pdf" "$md"
+      $WEASY_PYTHON "$SCRIPT_DIR/verify_lines.py" "$pdf" "$md"
+      ;;
+    letter)
+      ;;
+  esac
 }
 
 smoke_test() {
@@ -114,7 +125,7 @@ unlock() { rmdir "$LOCK"; }
 build_worker() {
   local md="$1"
   local out_name="$2"
-  local log="$TMPDIR_BUILD/$out_name.log"
+  local log="$TMPDIR_BUILD/$DOC_TYPE-$out_name.log"
   local rc=0
   build_one "$md" "$out_name" >"$log" 2>&1 || rc=$?
   lock
@@ -132,8 +143,8 @@ schedule() {
   # schedule <output_name> <input_md> <source_md_for_mtime> [extra_dep ...]
   local out_name="$1" input_md="$2"; shift 2
   total=$((total + 1))
-  if is_up_to_date "$OUTPUT_DIR/$out_name.pdf" "$@"; then
-    echo "  $out_name (up to date)"
+  if is_up_to_date "$OUT_SUBDIR/$out_name.pdf" "$@"; then
+    echo "  $DOC_TYPE/$out_name (up to date)"
     skipped=$((skipped + 1))
   else
     build_worker "$input_md" "$out_name" &
@@ -142,23 +153,51 @@ schedule() {
   fi
 }
 
-for md in "$INPUT_DIR"/*.md; do
-  [ -f "$md" ] || continue
-  basename="$(basename "$md" .md)"
-  variants_file="$INPUT_DIR/$basename.variants.toml"
+# Build a directory of source .md files into _output/<doc_type>s/.
+# Args: doc_type input_dir template css filter [extra_deps...]
+# Pass empty string for filter to skip --lua-filter.
+build_dir() {
+  DOC_TYPE="$1"
+  local input_dir="$2"
+  TEMPLATE="$3"
+  CSS="$4"
+  FILTER="$5"
+  shift 5
+  DEPS=("$SCRIPT_DIR/fit.py" "$TEMPLATE" "$CSS" "$@")
+  [ -n "$FILTER" ] && DEPS+=("$FILTER")
+  OUT_SUBDIR="$OUTPUT_ROOT/${DOC_TYPE}s"
+  mkdir -p "$OUT_SUBDIR"
 
-  if [ -f "$variants_file" ]; then
-    # Render all variants of this resume into TMPDIR_BUILD (synchronous, fast)
-    while IFS= read -r vname; do
-      schedule "$vname" "$TMPDIR_BUILD/$vname.md" "$md" "$variants_file"
-    done < <($WEASY_PYTHON "$SCRIPT_DIR/render_variants.py" "$md" "$variants_file" "$TMPDIR_BUILD")
-  else
-    schedule "$basename" "$md" "$md"
-  fi
-done
+  for md in "$input_dir"/*.md; do
+    [ -f "$md" ] || continue
+    local basename
+    basename="$(basename "$md" .md)"
+    local variants_file="$input_dir/$basename.variants.toml"
+
+    if [ -f "$variants_file" ]; then
+      while IFS= read -r vname; do
+        schedule "$vname" "$TMPDIR_BUILD/$vname.md" "$md" "$variants_file"
+      done < <($WEASY_PYTHON "$SCRIPT_DIR/render_variants.py" "$md" "$variants_file" "$TMPDIR_BUILD")
+    else
+      schedule "$basename" "$md" "$md"
+    fi
+  done
+}
+
+build_dir resume "$SCRIPT_DIR/resumes" \
+  "$SCRIPT_DIR/template.html" \
+  "$SCRIPT_DIR/style.css" \
+  "$SCRIPT_DIR/filter.lua" \
+  "$SCRIPT_DIR/verify_lines.py" \
+  "$SCRIPT_DIR/render_variants.py"
+
+build_dir letter "$SCRIPT_DIR/letters" \
+  "$SCRIPT_DIR/template-letter.html" \
+  "$SCRIPT_DIR/letter.css" \
+  ""
 
 if [ "$total" -eq 0 ]; then
-  echo "No .md files found in $INPUT_DIR" >&2
+  echo "No .md files found in $SCRIPT_DIR/resumes or $SCRIPT_DIR/letters" >&2
   exit 1
 fi
 
@@ -169,5 +208,5 @@ for pid in ${pids[@]+"${pids[@]}"}; do
 done
 
 built=$((started - failed))
-echo "Built $built, skipped $skipped → $OUTPUT_DIR/"
+echo "Built $built, skipped $skipped → $OUTPUT_ROOT/"
 [ "$failed" -eq 0 ]

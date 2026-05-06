@@ -1,0 +1,56 @@
+@import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+
+@page {
+  size: Letter;
+  margin: 1in;
+}
+
+body {
+  font-family: "EB Garamond", Garamond, "Palatino Linotype", Palatino, Georgia, serif;
+  font-size: 11pt;
+  line-height: 1.45;
+  color: #171717;
+  margin: 0;
+}
+
+a {
+  color: #171717;
+  text-decoration: none;
+}
+
+.letter-header {
+  margin-bottom: 22pt;
+}
+
+.letter-name {
+  font-size: 1.27em;
+  font-weight: bold;
+  letter-spacing: 0.3pt;
+}
+
+.letter-contact {
+  font-size: 0.9em;
+  margin-top: 2pt;
+}
+
+.letter-date {
+  margin-bottom: 18pt;
+}
+
+p {
+  margin: 0 0 10pt 0;
+}
+
+ul {
+  list-style-type: disc;
+  padding-left: 18pt;
+  margin: 0 0 10pt 0;
+}
+
+li {
+  margin-bottom: 5pt;
+}
+
+li p {
+  margin: 0;
+}
