@@ -1,4 +1,5 @@
 import argparse
+import asyncio
 import importlib
 import sys
 from pathlib import Path
@@ -32,8 +33,18 @@ def main() -> None:
         type=int,
         help="Max number of postings to process (for smoke tests)",
     )
+    ap.add_argument(
+        "--concurrency",
+        type=int,
+        default=20,
+        help="Max concurrent LLM calls (default 20). Lead call runs sequentially "
+        "to populate prompt cache; the rest fan out.",
+    )
     args = ap.parse_args()
+    asyncio.run(_amain(args))
 
+
+async def _amain(args: argparse.Namespace) -> None:
     sys.path.insert(0, str(Path.cwd()))
     module = importlib.import_module(args.scan)
     scan: Scan = module.scan
@@ -47,8 +58,13 @@ def main() -> None:
     filtered = 0
     i = 0
     with JsonlWriter(out_path) as writer:
-        for row in run_scan(
-            scan, client, args.resume, args.model, args.limit
+        async for row in run_scan(
+            scan,
+            client,
+            args.resume,
+            args.model,
+            args.limit,
+            args.concurrency,
         ):
             if row.get("_filtered"):
                 filtered += 1

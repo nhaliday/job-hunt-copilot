@@ -29,6 +29,7 @@ uv run python -m job_description_scan --scan scans.databricks
 #   --model claude-haiku-4-5                            # override scan default
 #   --out _output/databricks.jsonl                      # default: _output/<scan_tail>.jsonl
 #   --limit 5                                           # smoke test
+#   --concurrency 20                                    # max concurrent LLM calls (default 20)
 ```
 
 ## Adding a new scan
@@ -76,6 +77,25 @@ Per-scan inputs (`config.Scan`):
   cost). See `scans/databricks.py` for a US-states example. Title content is
   never filtered — only location is, since location is structured metadata while
   titles encode role nuance worth letting the LLM judge.
+
+## Concurrency
+
+LLM calls run concurrently via `anthropic.AsyncAnthropic`. Default
+`--concurrency 20`; bump freely if your rate limits allow (Haiku tier of 10K RPM
+/ 10M ITPM gives ~2 orders of magnitude of headroom at typical scan sizes).
+
+**Lead-then-fan-out**: call #1 is awaited sequentially so it writes the prompt
+cache; the rest fan out under a `Semaphore(concurrency)`. Without this, every
+concurrent call would pay `cache_creation_input_tokens` and cost would balloon
+~3–5×.
+
+**Row order** in the output JSONL is completion-order, not board-order. For
+deterministic ordering, post-process with
+`jq -s 'sort_by(.posting.id)' _output/<scan>.jsonl`.
+
+**Retries** are handled by the SDK (`max_retries=8` set in the pipeline), which
+retries 408/409/429/5xx with exponential backoff. No external retry library
+needed — adding one duplicates the SDK's behavior.
 
 ## Caching
 
