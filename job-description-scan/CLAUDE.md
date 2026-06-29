@@ -55,7 +55,8 @@ LLM, so use them to guide extraction at the field level.
 ## Architecture
 
 - **Board fetch**: `boards/<kind>.py` → `Posting` dataclass. No title filtering;
-  every posting flows to the LLM.
+  every posting flows to the LLM unless excluded by an optional
+  `location_filter` (see below).
 - **LLM pipeline**: `pipeline.py` builds a cached system prompt (instructions +
   schema + reference docs + optional resume), then issues a single composed-
   schema `client.messages.parse(...)` call per posting.
@@ -70,6 +71,11 @@ Per-scan inputs (`config.Scan`):
 - `system_context_files`: list of paths inlined into the cached system prompt
   (e.g. `Levels.fyi Standard SWE Level Framework.md`)
 - `model`: Anthropic model ID (default `claude-haiku-4-5`)
+- `location_filter`: optional `re.Pattern` applied to `Posting.location` before
+  the LLM call. Postings that don't match are skipped entirely (no extraction
+  cost). See `scans/databricks.py` for a US-states example. Title content is
+  never filtered — only location is, since location is structured metadata while
+  titles encode role nuance worth letting the LLM judge.
 
 ## Caching
 

@@ -44,10 +44,16 @@ def main() -> None:
     client = make_client(scan.source)
 
     total_in = total_out = total_cache_read = 0
+    filtered = 0
+    i = 0
     with JsonlWriter(out_path) as writer:
-        for i, row in enumerate(
-            run_scan(scan, client, args.resume, args.model, args.limit), start=1
+        for row in run_scan(
+            scan, client, args.resume, args.model, args.limit
         ):
+            if row.get("_filtered"):
+                filtered += 1
+                continue
+            i += 1
             writer.write(row)
             p = row["posting"]
             print(f"[{i}] {p['title']} @ {p['location']}", flush=True)
@@ -59,6 +65,8 @@ def main() -> None:
             total_cache_read += meta.get("cache_read_input_tokens", 0)
 
     print(f"\n→ {out_path} ({writer.count} rows)")
+    if filtered:
+        print(f"filtered: {filtered} postings (location_filter)")
     print(
         f"usage: {total_in} input + {total_out} output "
         f"+ {total_cache_read} cache_read tokens"

@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -20,3 +21,6 @@ class Scan:
     comparison: type[BaseModel] | None = None
     system_context_files: list[Path] = field(default_factory=list)
     model: str = "claude-haiku-4-5"
+    # Optional regex applied to Posting.location BEFORE the LLM call.
+    # Postings that don't match are skipped (no extraction cost). Use re.compile(...).
+    location_filter: re.Pattern[str] | None = None

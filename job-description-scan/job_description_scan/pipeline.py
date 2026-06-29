@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 from typing import Iterator
 
@@ -71,7 +72,7 @@ def run_scan(
 
     anth = anthropic.Anthropic()
     yield from _iter_results(
-        anth, model, system_blocks, Result, client, limit
+        anth, model, system_blocks, Result, client, limit, scan.location_filter
     )
 
 
@@ -82,9 +83,15 @@ def _iter_results(
     Result: type[BaseModel],
     client: BoardClient,
     limit: int | None,
+    location_filter: re.Pattern[str] | None,
 ) -> Iterator[dict]:
-    for i, posting in enumerate(client.iter_postings()):
-        if limit is not None and i >= limit:
+    produced = 0
+    for posting in client.iter_postings():
+        if location_filter is not None and not location_filter.search(posting.location):
+            yield {"posting": _posting_dict(posting), "_filtered": True}
+            continue
+
+        if limit is not None and produced >= limit:
             break
 
         user_content = (
@@ -106,6 +113,7 @@ def _iter_results(
                 "error": f"{type(e).__name__}: {e}",
                 "_meta": {"model": model},
             }
+            produced += 1
             continue
 
         parsed = response.parsed_output.model_dump()
@@ -128,6 +136,7 @@ def _iter_results(
             "result": parsed,
             "_meta": meta,
         }
+        produced += 1
 
 
 def _posting_dict(p: Posting) -> dict:
