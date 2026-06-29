@@ -50,9 +50,9 @@ def main() -> None:
     ):
         rows.append(row)
         p = row["posting"]
-        print(f"[{i}] {p['title']} @ {p['location']}")
+        print(f"[{i}] {p['title']} @ {p['location']}", flush=True)
         if "error" in row:
-            print(f"    ERROR: {row['error']}")
+            print(f"    ERROR: {row['error']}", flush=True)
         meta = row.get("_meta") or {}
         total_in += meta.get("input_tokens", 0)
         total_out += meta.get("output_tokens", 0)
