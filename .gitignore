@@ -485,3 +485,7 @@ pyrightconfig.json
 # End of https://www.toptal.com/developers/gitignore/api/latex,python
 
 _output/
+
+# direnv
+.envrc
+.direnv/

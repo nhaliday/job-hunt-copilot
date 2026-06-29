@@ -7,10 +7,18 @@ job-description-scan pipeline. All commands below run from this directory.
 
 ```bash
 uv sync
-export ANTHROPIC_API_KEY=...
+export ANTHROPIC_API_KEY=...      # or use direnv (.envrc here; gitignored at repo root)
 ```
 
 No external system dependencies.
+
+**When the API key is managed by direnv**, Claude Code's Bash tool runs
+non-interactive shells and will NOT auto-load `.envrc` on `cd`. Wrap any
+LLM-bound command with `direnv exec .` to inject the environment:
+
+```bash
+direnv exec . uv run python -m job_description_scan --scan scans.databricks
+```
 
 ## Invocation
 
