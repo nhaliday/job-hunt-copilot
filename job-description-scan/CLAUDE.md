@@ -37,8 +37,8 @@ uv run python -m job_description_scan --scan scans.databricks
 1. Copy `scans/databricks.py` to `scans/<name>.py`
 2. Edit the `Extraction` and (optional) `Comparison` Pydantic classes to match
    the role family you want to characterize
-3. Edit the `scan = Scan(...)` block: source board (`greenhouse` or `ashby`),
-   slug, model
+3. Edit the `scan = Scan(...)` block: source board (`greenhouse`, `ashby`, or
+   `lever` — all three implemented), slug, model
 4. Run: `uv run python -m job_description_scan --scan scans.<name>`
 
 Pydantic `Field(description=...)` strings flow into the JSON schema sent to the

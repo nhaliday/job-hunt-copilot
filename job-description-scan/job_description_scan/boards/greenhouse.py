@@ -1,35 +1,20 @@
-import html
-from html.parser import HTMLParser
 from typing import Iterable
 
 import httpx
 
-from job_description_scan.boards import Posting
+from job_description_scan.boards import Posting, strip_html
 
 
-class _Stripper(HTMLParser):
-    def __init__(self) -> None:
-        super().__init__()
-        self.parts: list[str] = []
-
-    def handle_data(self, data: str) -> None:
-        self.parts.append(data)
-
-    def handle_starttag(self, tag, attrs) -> None:
-        if tag in ("p", "br", "li", "div", "h1", "h2", "h3", "h4"):
-            self.parts.append("\n")
-
-    def handle_endtag(self, tag) -> None:
-        if tag in ("p", "li", "div", "h1", "h2", "h3", "h4"):
-            self.parts.append("\n")
-
-
-def _strip_html(raw: str) -> str:
-    decoded = html.unescape(raw)
-    s = _Stripper()
-    s.feed(decoded)
-    text = "".join(s.parts)
-    return "\n".join(line.strip() for line in text.splitlines() if line.strip())
+def _enriched_location(job: dict) -> str:
+    parts: list[str] = []
+    name = (job.get("location") or {}).get("name")
+    if name:
+        parts.append(name)
+    for off in job.get("offices") or []:
+        for v in (off.get("name"), off.get("location")):
+            if v and v not in parts:
+                parts.append(v)
+    return " | ".join(parts)
 
 
 class GreenhouseClient:
@@ -48,8 +33,8 @@ class GreenhouseClient:
             yield Posting(
                 id=str(job["id"]),
                 title=job.get("title", ""),
-                location=(job.get("location") or {}).get("name", ""),
-                content_text=_strip_html(job.get("content") or ""),
+                location=_enriched_location(job),
+                content_text=strip_html(job.get("content") or ""),
                 url=job.get("absolute_url", ""),
                 raw=job,
             )
