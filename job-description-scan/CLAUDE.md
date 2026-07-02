@@ -139,3 +139,59 @@ JSONL, one row per posting:
 `result.comparison` is absent when `--resume` was not supplied or the scan did
 not define a `Comparison` class. A row may instead carry an `error` field if the
 LLM call failed; the pipeline continues past it.
+
+## Ranking pass (second pass)
+
+Pointwise `fit_tier` triages but orders poorly _within_ a tier. To pick a
+best-of ordering, `ranking.py` runs an **LLM-as-judge pairwise tournament** over
+one role family's strong+stretch pool and fits **Bradley-Terry** (`choix`) to
+the outcomes. Run it once per role family — families are not comparable
+head-to-head.
+
+```bash
+# preview cost (no API spend): rows -> clusters -> pairings -> judge calls
+uv run python -m job_description_scan.ranking \
+  --scan scans.palantir --results _output/palantir-fable.jsonl \
+  --resume ../resume-printer/_output/resumes/resume-tech-local-relocation.md \
+  --ladder swe --dry-run
+
+# run a ladder (round-robin default; --schedule swiss is cheaper for large pools)
+… --ladder swe
+… --ladder post_sales_se
+#   --ladder all            # every ladder in the scan's RankConfig
+#   --no-order-swap         # halve calls (drops position-bias mitigation)
+#   --judge-model …         # default claude-fable-5
+```
+
+**Case config lives in the scan module**, not the engine. A scan defines
+`ranking = RankConfig(ladders=[Ladder(...)])` (see `scans/palantir.py`): one
+`Ladder` per role family, each selecting `roles`/`tiers`, an optional
+`exclude_title` regex (e.g. new-grad/internship), and a `label` role-framing
+string slotted into the otherwise-generic judge prompt. The engine reads this
+and stays free of any case-specific strings.
+
+Mechanics:
+
+- **Content dedup** (`rapidfuzz`, not embeddings): the scan JSONL has no JD
+  body, so the ranker re-fetches the board and joins on `posting.id`. It strips
+  the prefix/suffix shared across the pool (company blurb + EEO/benefits tail —
+  else boilerplate inflates similarity) and merges postings with
+  `token_set_ratio ≥ --dedup-threshold` (default 90). This collapses
+  location-variant clones and near-duplicate titles into one competing entry;
+  the canonical rep carries the member locations/ids.
+- **Judge**: each pair is compared twice with A/B **swapped** (position-bias
+  mitigation; `--no-order-swap` to halve cost). Consistent winner → one edge;
+  disagreement → a tie (one edge each direction, which `choix` handles). The
+  resume + role label form a cached system prefix (same lead-then-fan-out +
+  caching as the scan pipeline, reused from `pipeline.py`).
+- **Schedule**: `round-robin` (default) compares all pairs; `swiss`
+  (`--schedule swiss`, `--rounds N`) is cheaper and concentrates comparisons
+  near the top for large pools.
+- **Output**: `_output/<scan>-rank-<role>.jsonl`, one row per cluster with
+  `rank`, `utility` (Bradley-Terry), `wins`/`losses`/`ties`, and the member
+  `locations`/`posting_ids`; plus a leaderboard to stdout.
+
+**Cost**: round-robin is `2·C(n,2)` Fable calls — cheap for a small pool (~10
+FDE clusters → ~90 calls), but a ~22-cluster SWE pool is ~460 calls. Always
+`--dry-run` first; drop to `--no-order-swap` or `--schedule swiss` if that's
+hotter than you want.
