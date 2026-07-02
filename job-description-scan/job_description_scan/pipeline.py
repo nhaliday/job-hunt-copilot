@@ -1,13 +1,54 @@
 import asyncio
 import json
 from pathlib import Path
-from typing import AsyncIterator
+from typing import AsyncIterator, Awaitable, Callable, TypeVar
 
 import anthropic
 from pydantic import BaseModel, create_model
 
 from job_description_scan.boards import BoardClient, Posting
 from job_description_scan.config import Scan
+
+_T = TypeVar("_T")
+
+
+def cached_system(texts: list[str]) -> list[dict]:
+    """Wrap text strings as system blocks, caching the whole prefix.
+
+    Puts a `cache_control` breakpoint on the last non-empty block so the entire
+    prefix (identical across calls in one run) is written once and read
+    thereafter. Empty strings are dropped.
+    """
+    blocks: list[dict] = [{"type": "text", "text": t} for t in texts if t]
+    if blocks:
+        blocks[-1]["cache_control"] = {"type": "ephemeral"}
+    return blocks
+
+
+async def lead_then_fanout(
+    items: list[_T],
+    call: Callable[[_T], Awaitable[dict]],
+    concurrency: int,
+) -> AsyncIterator[dict]:
+    """Run item[0] sequentially so it writes the prompt cache, then fan the rest
+    out under a `Semaphore` reading that cache — without the lead call every
+    concurrent call pays `cache_creation` and cost balloons. Yields in
+    completion order.
+    """
+    if not items:
+        return
+    yield await call(items[0])
+    if len(items) == 1:
+        return
+    sem = asyncio.Semaphore(concurrency)
+
+    async def bounded(x: _T) -> dict:
+        async with sem:
+            return await call(x)
+
+    tasks = [asyncio.create_task(bounded(x)) for x in items[1:]]
+    for fut in asyncio.as_completed(tasks):
+        yield await fut
 
 
 async def run_scan(
@@ -46,30 +87,17 @@ async def run_scan(
             "fit."
         )
 
-    system_blocks: list[dict] = [
-        {"type": "text", "text": instructions},
-        {
-            "type": "text",
-            "text": "## Output schema\n\n"
-            + json.dumps(Result.model_json_schema(), indent=2),
-        },
+    texts = [
+        instructions,
+        "## Output schema\n\n" + json.dumps(Result.model_json_schema(), indent=2),
     ]
-
     for path in scan.system_context_files:
         p = Path(path)
-        system_blocks.append(
-            {
-                "type": "text",
-                "text": f"## Reference: {p.name}\n\n{p.read_text(encoding='utf-8')}",
-            }
-        )
-
+        texts.append(f"## Reference: {p.name}\n\n{p.read_text(encoding='utf-8')}")
     if resume_text:
-        system_blocks.append(
-            {"type": "text", "text": f"## Candidate resume\n\n{resume_text}"}
-        )
+        texts.append(f"## Candidate resume\n\n{resume_text}")
 
-    system_blocks[-1]["cache_control"] = {"type": "ephemeral"}
+    system_blocks = cached_system(texts)
 
     # Collect + filter postings synchronously. Yield filter markers immediately
     # so the CLI can count and (if you wanted) log them early.
@@ -91,23 +119,11 @@ async def run_scan(
     # common; the SDK already retries with exponential backoff.
     anth = anthropic.AsyncAnthropic(max_retries=8)
 
-    # Lead-then-fan-out: send call #1 sequentially so it writes the cache
-    # entry; subsequent fan-out reads from it (otherwise every concurrent call
-    # pays cache_creation and the cost balloons).
-    yield await _call(anth, model, system_blocks, Result, matched[0])
+    async def call(posting: Posting) -> dict:
+        return await _call(anth, model, system_blocks, Result, posting)
 
-    if len(matched) == 1:
-        return
-
-    sem = asyncio.Semaphore(concurrency)
-
-    async def bounded(p: Posting) -> dict:
-        async with sem:
-            return await _call(anth, model, system_blocks, Result, p)
-
-    tasks = [asyncio.create_task(bounded(p)) for p in matched[1:]]
-    for fut in asyncio.as_completed(tasks):
-        yield await fut
+    async for row in lead_then_fanout(matched, call, concurrency):
+        yield row
 
 
 async def _call(
@@ -124,8 +140,14 @@ async def _call(
 
     try:
         response = await anth.messages.parse(
+            # 12000 headroom (not 2048): models with always-on thinking (e.g.
+            # Fable 5) spend output tokens on reasoning that counts against
+            # max_tokens, and a tight cap truncates the structured result into a
+            # parse failure. You only pay for tokens actually generated, so the
+            # larger ceiling is free insurance and stays under the ~16K
+            # non-streaming timeout threshold.
             model=model,
-            max_tokens=2048,
+            max_tokens=12000,
             system=system_blocks,
             messages=[{"role": "user", "content": user_content}],
             output_format=Result,
