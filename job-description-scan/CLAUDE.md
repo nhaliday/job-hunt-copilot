@@ -25,12 +25,22 @@ direnv exec . uv run python -m job_description_scan --scan scans.databricks
 ```bash
 uv run python -m job_description_scan --scan scans.databricks
 # Optional flags:
-#   --resume ../resume-printer/resumes/resume-tech.md   # adds comparison pass
+#   --resume ../resume-printer/_output/resumes/resume-tech-local-relocation.md  # comparison pass
 #   --model claude-haiku-4-5                            # override scan default
 #   --out _output/databricks.jsonl                      # default: _output/<scan_tail>.jsonl
 #   --limit 5                                           # smoke test
 #   --concurrency 20                                    # max concurrent LLM calls (default 20)
 ```
+
+**Point `--resume` at the rendered variant, not the raw template.** The pipeline
+reads the resume file verbatim into the (cached) system prompt — no Jinja
+rendering. `resume-printer/resumes/resume-tech.md` is a template: its
+`{% if location %}` / `{{ headlands_location }}` directives would reach the LLM
+literally, and location/relocation would be _absent_. Use the instantiated
+artifact `resume-printer/_output/resumes/resume-tech-local-relocation.md`
+(produced by `./build.sh` in resume-printer; `local-relocation` = current
+DC-Metro + open to relocation), so location and relocation frontmatter actually
+inform the comparison/fit tier. Re-run `./build.sh` after editing the resume.
 
 ## Adding a new scan
 

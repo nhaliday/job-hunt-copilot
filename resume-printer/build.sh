@@ -185,8 +185,8 @@ build_dir() {
 
     if [ -f "$variants_file" ]; then
       while IFS= read -r vname; do
-        schedule "$vname" "$TMPDIR_BUILD/$vname.md" "$md" "$variants_file"
-      done < <($WEASY_PYTHON "$SCRIPT_DIR/render_variants.py" "$md" "$variants_file" "$TMPDIR_BUILD")
+        schedule "$vname" "$OUT_SUBDIR/$vname.md" "$md" "$variants_file"
+      done < <($WEASY_PYTHON "$SCRIPT_DIR/render_variants.py" "$md" "$variants_file" "$OUT_SUBDIR")
     else
       schedule "$basename" "$md" "$md"
     fi

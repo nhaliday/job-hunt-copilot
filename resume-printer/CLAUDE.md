@@ -45,7 +45,14 @@ Builds are incremental (mtime of PDF vs source + per-type deps) and parallel
 (background jobs with mkdir-based stdout mutex). Post-build checks run on cached
 PDFs too, so editing `verify_pages.py`/`verify_lines.py`/the smoke test re-runs
 on the next `./build.sh` without forcing a rebuild. Variants (via
-`*.variants.toml` + `render_variants.py`) currently only used for resumes.
+`*.variants.toml` + `render_variants.py`) currently only used for resumes. The
+rendered per-variant Markdown persists at `_output/resumes/<variant>.md`
+(alongside the `.html`/`.pdf`), regenerated every build — it is the
+fully-instantiated resume (Jinja resolved), consumed downstream by
+`job-description-scan` as the `--resume` input so location/relocation
+frontmatter reaches the LLM. Incremental logic keys the PDF against the source
+`.md` + `.variants.toml`, not this intermediate, so re-rendering it every build
+is free.
 
 ## Doc Types
 
