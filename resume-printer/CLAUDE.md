@@ -3,6 +3,17 @@
 This file provides guidance to Claude Code when working with the resume-printer
 pipeline. All commands below run from this directory.
 
+## Generic vs. personal (see top-level CLAUDE.md)
+
+- **Generic / publishable:** the build pipeline — `build.sh`, `*.py`,
+  `template*.html`, `*.css`, `filter.lua`, `render_variants.py`.
+- **Personal / sensitive:** `resumes/` and `letters/` (your actual résumé and
+  cover-letter text + variants) and `_output/` (rendered PDFs/MD; gitignored).
+
+Keep these in **separate commits** — never mix a pipeline change with a
+`resumes/` or `letters/` content change, so the pipeline stays cleanly
+extractable and your personal documents stay out of anything shareable.
+
 ## Build
 
 ```bash

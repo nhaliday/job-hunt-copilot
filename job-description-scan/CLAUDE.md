@@ -3,6 +3,17 @@
 This file provides guidance to Claude Code when working with the
 job-description-scan pipeline. All commands below run from this directory.
 
+## Generic vs. personal (see top-level CLAUDE.md)
+
+- **Generic / publishable:** the `job_description_scan/` package (engine, board
+  clients, pipeline, ranking).
+- **Personal / sensitive:** `scans/<company>.py` (names your targets + tuning)
+  and `_output/` (scan + rank results; gitignored).
+
+Keep these in **separate commits** — never mix an engine change with a `scans/*`
+or output change. This keeps the engine's history clean for a possible public
+extraction and the target/results material out of anything shareable.
+
 ## Setup
 
 ```bash
