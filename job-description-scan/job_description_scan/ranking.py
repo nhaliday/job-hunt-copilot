@@ -2,7 +2,7 @@
 
 Generic engine. All case-specific selection (which roles/tiers compete, which
 titles to exclude, role framing) lives in a scan module's `ranking = RankConfig`
-(see scans/palantir.py), never here.
+(see examples/example_scan.py), never here.
 
 Second pass after a scan: pointwise `fit_tier` triages but orders poorly within
 a tier. This ranks the strong+stretch pool of one role family by having a judge
@@ -389,7 +389,7 @@ def _load_ladders(scan_module: str, ladder_arg: str) -> tuple[Scan, list[Ladder]
 
 def main() -> None:
     ap = argparse.ArgumentParser(prog="job-description-scan.ranking")
-    ap.add_argument("--scan", required=True, help="scan module, e.g. scans.palantir")
+    ap.add_argument("--scan", required=True, help="scan module, e.g. scans.acme")
     ap.add_argument("--results", type=Path, required=True, help="scan JSONL output")
     ap.add_argument("--resume", type=Path, help="resume markdown (required unless --dry-run)")
     ap.add_argument("--ladder", required=True, help="role family (e.g. swe) or 'all'")

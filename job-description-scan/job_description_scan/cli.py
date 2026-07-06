@@ -15,7 +15,7 @@ def main() -> None:
     ap.add_argument(
         "--scan",
         required=True,
-        help="Python module path of the scan (e.g. scans.databricks)",
+        help="Python module path of the scan (e.g. scans.acme)",
     )
     ap.add_argument(
         "--resume",

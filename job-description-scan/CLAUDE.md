@@ -1,24 +1,30 @@
 # CLAUDE.md
 
 This file provides guidance to Claude Code when working with the
-job-description-scan pipeline. All commands below run from this directory.
+job-description-scan pipeline.
 
-## Generic vs. personal (see top-level CLAUDE.md)
+## Engine here, case config in the consuming project
 
-- **Generic / publishable:** the `job_description_scan/` package (engine, board
-  clients, pipeline, ranking).
-- **Personal / sensitive:** `scans/<company>.py` (names your targets + tuning)
-  and `_output/` (scan + rank results; gitignored).
+This repo holds only the generic engine (the `job_description_scan/` package:
+board clients, pipeline, ranking). Everything case-specific lives in the
+consuming (private) content project and never here:
 
-Keep these in **separate commits** — never mix an engine change with a `scans/*`
-or output change. This keeps the engine's history clean for a possible public
-extraction and the target/results material out of anything shareable.
+- `scans/<company>.py` — per-target scan configs (which board, extraction
+  schemas, filters, ranking ladders). See `examples/example_scan.py` for a
+  sanitized template.
+- reference docs passed via `system_context_files` (e.g. a leveling framework)
+- `_output/` — scan/rank results (gitignored in the content project)
 
-## Setup
+The engine is installable (hatchling build-system): the content project depends
+on it via a uv path/git source. All commands below run **from the content
+project root**, whose cwd provides the `scans.` package (the CLI does
+`sys.path.insert(0, cwd)`).
+
+## Setup (in the content project)
 
 ```bash
 uv sync
-export ANTHROPIC_API_KEY=...      # or use direnv (.envrc here; gitignored at repo root)
+export ANTHROPIC_API_KEY=...      # or use direnv (.envrc, gitignored)
 ```
 
 No external system dependencies.
@@ -28,34 +34,33 @@ non-interactive shells and will NOT auto-load `.envrc` on `cd`. Wrap any
 LLM-bound command with `direnv exec .` to inject the environment:
 
 ```bash
-direnv exec . uv run python -m job_description_scan --scan scans.databricks
+direnv exec . uv run python -m job_description_scan --scan scans.acme
 ```
 
 ## Invocation
 
 ```bash
-uv run python -m job_description_scan --scan scans.databricks
+uv run python -m job_description_scan --scan scans.acme
 # Optional flags:
-#   --resume ../resume-printer/_output/resumes/resume-tech-local-relocation.md  # comparison pass
-#   --model claude-haiku-4-5                            # override scan default
-#   --out _output/databricks.jsonl                      # default: _output/<scan_tail>.jsonl
-#   --limit 5                                           # smoke test
-#   --concurrency 20                                    # max concurrent LLM calls (default 20)
+#   --resume _output/resumes/<rendered-variant>.md    # comparison pass
+#   --model claude-haiku-4-5                          # override scan default
+#   --out _output/acme.jsonl                          # default: _output/<scan_tail>.jsonl
+#   --limit 5                                         # smoke test
+#   --concurrency 20                                  # max concurrent LLM calls (default 20)
 ```
 
-**Point `--resume` at the rendered variant, not the raw template.** The pipeline
+**Point `--resume` at a rendered resume, not a Jinja template.** The pipeline
 reads the resume file verbatim into the (cached) system prompt — no Jinja
-rendering. `resume-printer/resumes/resume-tech.md` is a template: its
-`{% if location %}` / `{{ headlands_location }}` directives would reach the LLM
-literally, and location/relocation would be _absent_. Use the instantiated
-artifact `resume-printer/_output/resumes/resume-tech-local-relocation.md`
-(produced by `./build.sh` in resume-printer; `local-relocation` = current
-DC-Metro + open to relocation), so location and relocation frontmatter actually
-inform the comparison/fit tier. Re-run `./build.sh` after editing the resume.
+rendering. If the resume source is a template (`{% if location %}` etc.), the
+directives would reach the LLM literally and location/relocation would be
+absent. Use the instantiated artifact produced by resume-printer's build
+(`_output/resumes/<variant>.md`), so location and relocation frontmatter
+actually inform the comparison/fit tier. Re-run the build after editing the
+resume.
 
-## Adding a new scan
+## Adding a new scan (in the content project)
 
-1. Copy `scans/databricks.py` to `scans/<name>.py`
+1. Copy `examples/example_scan.py` to `scans/<name>.py`
 2. Edit the `Extraction` and (optional) `Comparison` Pydantic classes to match
    the role family you want to characterize
 3. Edit the `scan = Scan(...)` block: source board (`greenhouse`, `ashby`, or
@@ -91,13 +96,13 @@ Per-scan inputs (`config.Scan`):
 - `comparison`: optional Pydantic class for fit/gap fields (populated when
   `--resume` provided)
 - `system_context_files`: list of paths inlined into the cached system prompt
-  (e.g. `Levels.fyi Standard SWE Level Framework.md`)
+  (e.g. a leveling framework the scan's level taxonomy refers to)
 - `model`: Anthropic model ID (default `claude-haiku-4-5`)
 - `location_filter`: optional `re.Pattern` applied to `Posting.location` before
   the LLM call. Postings that don't match are skipped entirely (no extraction
-  cost). See `scans/databricks.py` for a US-states example. Title content is
-  never filtered — only location is, since location is structured metadata while
-  titles encode role nuance worth letting the LLM judge.
+  cost). See `examples/example_scan.py`. Title content is never filtered — only
+  location is, since location is structured metadata while titles encode role
+  nuance worth letting the LLM judge.
 
 ## Concurrency
 
@@ -125,9 +130,9 @@ Anthropic prompt caching kicks in from posting 2 onward. Verify by inspecting
 `_meta.cache_read_input_tokens > 0` in the output JSONL.
 
 Minimum cacheable prefix is 4096 tokens on Haiku 4.5 and 2048 on Sonnet 4.6.
-Small system prompts (no resume, short Levels.fyi-equivalent) may silently fall
-under the threshold and cache nothing — the cost is still small at this scale
-but check the meta if you see no cache reads.
+Small system prompts (no resume, short reference docs) may silently fall under
+the threshold and cache nothing — the cost is still small at this scale but
+check the meta if you see no cache reads.
 
 ## Output format
 
@@ -162,8 +167,8 @@ head-to-head.
 ```bash
 # preview cost (no API spend): rows -> clusters -> pairings -> judge calls
 uv run python -m job_description_scan.ranking \
-  --scan scans.palantir --results _output/palantir-fable.jsonl \
-  --resume ../resume-printer/_output/resumes/resume-tech-local-relocation.md \
+  --scan scans.acme --results _output/acme.jsonl \
+  --resume _output/resumes/<rendered-variant>.md \
   --ladder swe --dry-run
 
 # run a ladder (round-robin default; --schedule swiss is cheaper for large pools)
@@ -175,8 +180,8 @@ uv run python -m job_description_scan.ranking \
 ```
 
 **Case config lives in the scan module**, not the engine. A scan defines
-`ranking = RankConfig(ladders=[Ladder(...)])` (see `scans/palantir.py`): one
-`Ladder` per role family, each selecting `roles`/`tiers`, an optional
+`ranking = RankConfig(ladders=[Ladder(...)])` (see `examples/example_scan.py`):
+one `Ladder` per role family, each selecting `roles`/`tiers`, an optional
 `exclude_title` regex (e.g. new-grad/internship), and a `label` role-framing
 string slotted into the otherwise-generic judge prompt. The engine reads this
 and stays free of any case-specific strings.
@@ -202,7 +207,7 @@ Mechanics:
   `rank`, `utility` (Bradley-Terry), `wins`/`losses`/`ties`, and the member
   `locations`/`posting_ids`; plus a leaderboard to stdout.
 
-**Cost**: round-robin is `2·C(n,2)` Fable calls — cheap for a small pool (~10
-FDE clusters → ~90 calls), but a ~22-cluster SWE pool is ~460 calls. Always
-`--dry-run` first; drop to `--no-order-swap` or `--schedule swiss` if that's
-hotter than you want.
+**Cost**: round-robin is `2·C(n,2)` judge calls — cheap for a small pool (~10
+clusters → ~90 calls), but a ~22-cluster pool is ~460 calls. Always `--dry-run`
+first; drop to `--no-order-swap` or `--schedule swiss` if that's hotter than you
+want.

@@ -3,16 +3,15 @@
 This file provides guidance to Claude Code when working with the resume-printer
 pipeline. All commands below run from this directory.
 
-## Generic vs. personal (see top-level CLAUDE.md)
+## Pipeline here, content in the consuming project
 
-- **Generic / publishable:** the build pipeline — `build.sh`, `*.py`,
-  `template*.html`, `*.css`, `filter.lua`, `render_variants.py`.
-- **Personal / sensitive:** `resumes/` and `letters/` (your actual résumé and
-  cover-letter text + variants) and `_output/` (rendered PDFs/MD; gitignored).
-
-Keep these in **separate commits** — never mix a pipeline change with a
-`resumes/` or `letters/` content change, so the pipeline stays cleanly
-extractable and your personal documents stay out of anything shareable.
+This repo holds only the build pipeline — `build.sh`, `*.py`, `template*.html`,
+`*.css`, `filter.lua`, `render_variants.py`. The actual résumé/cover-letter
+sources (`resumes/`, `letters/`, `*.variants.toml`) live in a separate private
+content project, which invokes this pipeline with its own root as `SRC_ROOT`
+(typically via a wrapper: `tools/resume-printer/build.sh <content-root>`).
+Outputs land in the content project's gitignored `_output/`. No personal data
+may be committed here.
 
 ## Build
 
@@ -31,9 +30,9 @@ Outputs land in `_output/resumes/<name>.pdf` and `_output/letters/<name>.pdf`.
 Single resume, manually:
 
 ```bash
-pandoc resumes/resume-teaching.md --lua-filter=filter.lua --template=template.html --css=style.css -o _output/resumes/resume-teaching.html
-.venv/bin/python fit.py _output/resumes/resume-teaching.html _output/resumes/resume-teaching.pdf
-.venv/bin/python verify_lines.py _output/resumes/resume-teaching.pdf resumes/resume-teaching.md
+pandoc "$SRC/resumes/example.md" --lua-filter=filter.lua --template=template.html --css=style.css -o "$OUT/resumes/example.html"
+.venv/bin/python fit.py "$OUT/resumes/example.html" "$OUT/resumes/example.pdf"
+.venv/bin/python verify_lines.py "$OUT/resumes/example.pdf" "$SRC/resumes/example.md"
 ```
 
 ## Pipeline
@@ -107,7 +106,7 @@ Optional intro paragraph.
 name: Jane Doe
 email: jane.doe@example.com
 phone: 555-123-4567
-location: Washington DC Metro Area
+location: City, ST
 date: May 5, 2026
 ---
 
@@ -135,4 +134,4 @@ Jane Doe
 - Both CSS files import EB Garamond from Google Fonts (network required on first
   build)
 - Resumes: A4, 11mm/15mm margins. Letters: US Letter, 1in margins
-- `_output/` is gitignored; `sample/` has committed reference output
+- Outputs are never committed (`_output/` is gitignored in the content project)
