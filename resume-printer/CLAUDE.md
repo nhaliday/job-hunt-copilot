@@ -19,7 +19,8 @@ extractable and your personal documents stay out of anything shareable.
 ```bash
 uv sync                  # first time: create .venv, install weasyprint + pdfplumber
 ./build.sh               # build all resumes and letters (incremental, parallel)
-./build.sh OUT           # custom output root (default: _output/)
+./build.sh SRC           # source root holding resumes/ and letters/ (default: this dir)
+./build.sh SRC OUT       # custom output root (default: SRC/_output/)
 ```
 
 External dependencies (not managed by uv): `pandoc` (3.x), `pdftotext`

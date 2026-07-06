@@ -4,7 +4,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Use the project's uv-managed Python (has weasyprint + pdfplumber)
 WEASY_PYTHON="$SCRIPT_DIR/.venv/bin/python"
-OUTPUT_ROOT="${1:-$SCRIPT_DIR/_output}"
+# Usage: build.sh [SRC_ROOT] [OUT_ROOT]
+# SRC_ROOT holds the resumes/ and letters/ source dirs (default: this
+# directory, preserving standalone use). OUT_ROOT defaults to SRC_ROOT/_output
+# so outputs land next to the content they were built from.
+SRC_ROOT="$(cd "${1:-$SCRIPT_DIR}" && pwd)"
+OUTPUT_ROOT="${2:-$SRC_ROOT/_output}"
 
 mkdir -p "$OUTPUT_ROOT"
 
@@ -193,19 +198,19 @@ build_dir() {
   done
 }
 
-build_dir resume "$SCRIPT_DIR/resumes" \
+build_dir resume "$SRC_ROOT/resumes" \
   "$SCRIPT_DIR/template.html" \
   "$SCRIPT_DIR/style.css" \
   "$SCRIPT_DIR/filter.lua" \
   "$SCRIPT_DIR/render_variants.py"
 
-build_dir letter "$SCRIPT_DIR/letters" \
+build_dir letter "$SRC_ROOT/letters" \
   "$SCRIPT_DIR/template-letter.html" \
   "$SCRIPT_DIR/letter.css" \
   ""
 
 if [ "$total" -eq 0 ]; then
-  echo "No .md files found in $SCRIPT_DIR/resumes or $SCRIPT_DIR/letters" >&2
+  echo "No .md files found in $SRC_ROOT/resumes or $SRC_ROOT/letters" >&2
   exit 1
 fi
 
