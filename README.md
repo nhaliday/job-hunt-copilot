@@ -30,7 +30,8 @@ through an LLM with a per-scan Pydantic schema.
   quals, YoE gap, fit tier) against a concrete resume.
 - **Cheap by construction** — deterministic location pre-filter before any LLM
   call; a shared cached system prompt with lead-then-fan-out concurrency so
-  every call after the first reads the prompt cache (~3–5× cost reduction).
+  every call after the first reads the prompt cache (~4× prompt-cost reduction,
+  measured across scans).
 - **Ranking pass** — pointwise tiers order poorly within a tier, so a second
   pass runs a pairwise LLM-as-judge tournament (A/B order-swapped to control
   position bias) and fits Bradley–Terry to produce a ranking.
