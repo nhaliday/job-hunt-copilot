@@ -28,8 +28,9 @@ class GreenhouseClient:
         )
         r = httpx.get(url, timeout=30)
         r.raise_for_status()
-        data = r.json()
-        for job in data.get("jobs", []):
+        # "jobs" is the documented top-level key; index directly so a wrong
+        # slug or schema change fails loudly instead of scanning 0 postings.
+        for job in r.json()["jobs"]:
             yield Posting(
                 id=str(job["id"]),
                 title=job.get("title", ""),
