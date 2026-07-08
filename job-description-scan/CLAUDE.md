@@ -177,6 +177,9 @@ uv run python -m job_description_scan.ranking \
 #   --ladder all            # every ladder in the scan's RankConfig
 #   --no-order-swap         # halve calls (drops position-bias mitigation)
 #   --judge-model …         # default claude-fable-5
+#   --dedup-threshold 101   # exact-only dedup: scores cap at 100, so only
+#                           # string-identical cores merge; more clusters ->
+#                           # more judge calls (quadratic at round-robin)
 ```
 
 **Case config lives in the scan module**, not the engine. A scan defines
