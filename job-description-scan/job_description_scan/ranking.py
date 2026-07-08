@@ -133,7 +133,9 @@ def _strip_common_affixes(cores: list[str]) -> list[str]:
     return [c[pre : len(c) - suf] for c in cores]
 
 
-def dedupe(joined: list[dict], threshold: float) -> list[Candidate]:
+def dedupe(joined: list[dict], threshold: float | None) -> list[Candidate]:
+    """Cluster near-duplicate postings; `threshold` None means exact-only
+    (string-identical cores), a float opts into fuzzy merging."""
     cores = _strip_common_affixes([_normalize(r["_content"]) for r in joined])
     clusters: list[list[int]] = []
     reps: list[str] = []
@@ -141,22 +143,27 @@ def dedupe(joined: list[dict], threshold: float) -> list[Candidate]:
     for i, core in enumerate(cores):
         placed = False
         for c, rep in enumerate(reps):
-            if core == rep or fuzz.token_set_ratio(core, rep) >= threshold:
-                if core != rep:
-                    # Non-identical texts merged on fuzzy similarity — surface
-                    # it so bad merges are visible in --dry-run. Note a score
-                    # of 100 does NOT mean identical: token_set_ratio ignores
-                    # word order/multiplicity and scores near-subsets 100.
-                    score = fuzz.token_set_ratio(core, rep)
-                    pi, pr = joined[i]["posting"], joined[rep_idx[c]]["posting"]
-                    print(
-                        f"  merge: {pi['id']} {pi['title']!r} -> "
-                        f"{pr['id']} {pr['title']!r} "
-                        f"(token_set_ratio={score:.0f}, non-identical text)"
-                    )
-                clusters[c].append(i)
-                placed = True
-                break
+            if core == rep:
+                pass
+            elif (
+                threshold is not None
+                and (score := fuzz.token_set_ratio(core, rep)) >= threshold
+            ):
+                # Non-identical texts merged on fuzzy similarity — surface it
+                # so bad merges are visible in --dry-run. Note a score of 100
+                # does NOT mean identical: token_set_ratio ignores word
+                # order/multiplicity and scores near-subsets 100.
+                pi, pr = joined[i]["posting"], joined[rep_idx[c]]["posting"]
+                print(
+                    f"  merge: {pi['id']} {pi['title']!r} -> "
+                    f"{pr['id']} {pr['title']!r} "
+                    f"(token_set_ratio={score:.0f}, non-identical text)"
+                )
+            else:
+                continue
+            clusters[c].append(i)
+            placed = True
+            break
         if not placed:
             clusters.append([i])
             reps.append(core)
@@ -411,7 +418,14 @@ def main() -> None:
     ap.add_argument("--ladder", required=True, help="role family (e.g. swe) or 'all'")
     ap.add_argument("--schedule", choices=["round-robin", "swiss"], default="round-robin")
     ap.add_argument("--rounds", type=int, help="swiss rounds (default ceil(log2 n)+2)")
-    ap.add_argument("--dedup-threshold", type=float, default=90.0)
+    ap.add_argument(
+        "--dedup-threshold",
+        type=float,
+        default=None,
+        help="opt into fuzzy merging: token_set_ratio needed to merge "
+        "non-identical cores (e.g. 90). Default: only string-identical "
+        "cores merge.",
+    )
     ap.add_argument("--judge-model", default="claude-fable-5")
     ap.add_argument("--order-swap", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument("--concurrency", type=int, default=20)
