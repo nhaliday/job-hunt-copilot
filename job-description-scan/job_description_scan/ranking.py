@@ -57,7 +57,6 @@ class Candidate:
     tier: str
     level: str
     url: str
-    location: str
     content: str  # canonical JD body, fed to the judge
     locations: list[str] = field(default_factory=list)
     posting_ids: list[str] = field(default_factory=list)
@@ -165,7 +164,6 @@ def dedupe(joined: list[dict], threshold: float) -> list[Candidate]:
                 tier=best_tier,
                 level=canon["result"]["extraction"].get("level", "unknown"),
                 url=cp.get("url", ""),
-                location=cp.get("location", ""),
                 content=canon["_content"],
                 locations=sorted({r["posting"].get("location", "") for r in recs}),
                 posting_ids=[r["posting"]["id"] for r in recs],
@@ -194,7 +192,11 @@ def _system_prefix(resume_text: str, label: str) -> list[dict]:
 
 def _user_content(a: Candidate, b: Candidate) -> str:
     def block(tag: str, c: Candidate) -> str:
-        return f"## Posting {tag}\nTitle: {c.title}\nLocation: {c.location}\n\n{c.content}"
+        # All member locations of the cluster (pipe-joined, matching the board
+        # clients' list convention), so the judge weighs the role's true
+        # geographic options rather than the canonical member's city.
+        locs = " | ".join(loc for loc in c.locations if loc)
+        return f"## Posting {tag}\nTitle: {c.title}\nLocation: {locs}\n\n{c.content}"
 
     return block("A", a) + "\n\n" + block("B", b)
 
