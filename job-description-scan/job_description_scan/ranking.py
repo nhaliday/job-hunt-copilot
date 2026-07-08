@@ -137,16 +137,30 @@ def dedupe(joined: list[dict], threshold: float) -> list[Candidate]:
     cores = _strip_common_affixes([_normalize(r["_content"]) for r in joined])
     clusters: list[list[int]] = []
     reps: list[str] = []
+    rep_idx: list[int] = []
     for i, core in enumerate(cores):
         placed = False
         for c, rep in enumerate(reps):
             if core == rep or fuzz.token_set_ratio(core, rep) >= threshold:
+                if core != rep:
+                    # Non-identical texts merged on fuzzy similarity — surface
+                    # it so bad merges are visible in --dry-run. Note a score
+                    # of 100 does NOT mean identical: token_set_ratio ignores
+                    # word order/multiplicity and scores near-subsets 100.
+                    score = fuzz.token_set_ratio(core, rep)
+                    pi, pr = joined[i]["posting"], joined[rep_idx[c]]["posting"]
+                    print(
+                        f"  merge: {pi['id']} {pi['title']!r} -> "
+                        f"{pr['id']} {pr['title']!r} "
+                        f"(token_set_ratio={score:.0f}, non-identical text)"
+                    )
                 clusters[c].append(i)
                 placed = True
                 break
         if not placed:
             clusters.append([i])
             reps.append(core)
+            rep_idx.append(i)
 
     out: list[Candidate] = []
     for members in clusters:

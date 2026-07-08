@@ -194,7 +194,11 @@ Mechanics:
   else boilerplate inflates similarity) and merges postings with
   `token_set_ratio ≥ --dedup-threshold` (default 90). This collapses
   location-variant clones and near-duplicate titles into one competing entry;
-  the canonical rep carries the member locations/ids.
+  the canonical rep carries the member locations/ids. Every merge of
+  non-identical text is logged (`merge: <id> <title> -> ...`) — inspect these in
+  `--dry-run` before spending; a score of 100 does not imply identical
+  (token_set_ratio ignores order/multiplicity and scores near-subsets 100), so
+  e.g. Senior/non-Senior variants of one JD can merge silently without the log.
 - **Judge**: each pair is compared twice with A/B **swapped** (position-bias
   mitigation; `--no-order-swap` to halve cost). Consistent winner → one edge;
   disagreement → a tie (one edge each direction, which `choix` handles). The
