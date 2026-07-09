@@ -12,6 +12,7 @@ pairwise outcomes. Run once per role family — families are not comparable.
 
 import argparse
 import asyncio
+import collections
 import importlib
 import itertools
 import json
@@ -391,7 +392,24 @@ async def run_ladder(
                 if r["winner"] is not None:
                     score[r["winner"]] += 1.0
 
+    _report_errors(results)
     return rank(cands, results)
+
+
+def _report_errors(results: list[dict]) -> None:
+    """Failed judge calls silently drop their edge; make that loud. Every
+    failure carries an error string — summarize by type so a systemic cause
+    (rate limit, refusal, truncation) is obvious, not just a thin tally."""
+    errors = [r["error"] for r in results if r.get("error")]
+    if not errors:
+        return
+    print(
+        f"  WARNING: {len(errors)}/{len(results)} judge calls failed "
+        "(no edge recorded):",
+        flush=True,
+    )
+    for msg, count in collections.Counter(e[:160] for e in errors).most_common(5):
+        print(f"    {count}x {msg}", flush=True)
 
 
 def _load_ladders(scan_module: str, ladder_arg: str) -> tuple[Scan, list[Ladder]]:
