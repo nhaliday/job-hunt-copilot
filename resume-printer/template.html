@@ -10,7 +10,7 @@ $endfor$
 <header class="resume-header">
 $if(email)$
   <div class="header-contact">
-    <a href="mailto:$email$">$email$</a> &bull; <a href="tel:$phone$">$phone$</a>$if(location)$ &bull; $location$$endif$
+    <a href="mailto:$email$">$email$</a> &bull; <a href="tel:$phone$">$phone$</a>$if(location)$ &bull; $location$$endif$$if(relocation)$ &bull; $relocation$$endif$
   </div>
 $endif$
 $if(name)$
@@ -18,9 +18,6 @@ $if(name)$
 $endif$
 $if(subtitle)$
   <div class="header-subtitle">$subtitle$</div>
-$endif$
-$if(relocation)$
-  <div class="header-relocation">$relocation$</div>
 $endif$
 </header>
 $body$
