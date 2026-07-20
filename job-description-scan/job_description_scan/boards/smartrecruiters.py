@@ -5,7 +5,12 @@ import httpx
 
 from job_description_scan.boards import Posting, strip_html
 
-_PAGE = 100  # server-enforced page cap
+# Empirical page cap — the Posting API documents limit/offset pagination but no
+# maximum. If the server ever clamps lower than this, pages would skip rows; the
+# collected-vs-totalFound warning in _list_rows is the tripwire.
+_PAGE = 100
+# The documented jobAd sections, minus the fifth ("videos") — video URLs aren't
+# useful text for the LLM.
 _SECTIONS = (
     "companyDescription",
     "jobDescription",
