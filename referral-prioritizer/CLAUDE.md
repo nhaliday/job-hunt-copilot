@@ -34,6 +34,16 @@ pipeline is built in reviewable stages; implemented so far:
    completion. Flags: `--probe-only` (no key needed), `--dry-run` (counts + cost
    estimate, no writes), `--limit N`, `--model`, `--concurrency` (phase-B LLM
    calls, default 8).
+3. **Pre-gate stats** (`referral_prioritizer/stats.py`) — adds/refreshes
+   `n_postings_located` (postings passing a location filter) per scannable
+   board, zero LLM spend. One-shot boards reuse the engine clients so counted
+   location strings match scan semantics exactly. Workday prefers the server's
+   own country facet (parameter names vary by tenant; matched by label,
+   sometimes nested under `locationMainGroup`) and falls back to a parallel
+   detail walk for facet-less tenants whose `locationsText` carries no geography
+   at all (street addresses, campus names — worse than the City-ST gotcha).
+   Flags: `--location-filter`, `--workday-location-filter` (defaults mirror a
+   US+Canada scope), `--workers`.
 
 Known limitation: a probe-accepted board can be genuine but _secondary_ (a
 sub-org or test board on one ATS while the main careers system lives elsewhere).
