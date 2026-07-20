@@ -9,12 +9,13 @@ unchanged export are byte-identical.
 """
 
 import argparse
-import collections
-import csv
+import io
 from pathlib import Path
 
+import polars as pl
 
-def parse_export(path: Path) -> list[dict]:
+
+def parse_export(path: Path) -> pl.DataFrame:
     lines = path.read_text(encoding="utf-8-sig").splitlines()
     try:
         start = next(i for i, l in enumerate(lines) if l.startswith("First Name,"))
@@ -22,7 +23,7 @@ def parse_export(path: Path) -> list[dict]:
         raise SystemExit(
             f"{path}: no 'First Name,...' header — not a LinkedIn connections export?"
         )
-    return list(csv.DictReader(lines[start:]))
+    return pl.read_csv(io.StringIO("\n".join(lines[start:])))
 
 
 def main() -> None:
@@ -33,32 +34,29 @@ def main() -> None:
     ap.add_argument("--out", type=Path, required=True, help="output companies CSV")
     args = ap.parse_args()
 
-    rows = parse_export(args.export)
-    positions_at: dict[str, list[str]] = collections.defaultdict(list)
-    dropped = 0
-    for r in rows:
-        company = (r.get("Company") or "").strip()
-        if not company:
-            dropped += 1
-            continue
-        positions_at[company].append((r.get("Position") or "").strip())
+    df = parse_export(args.export).with_columns(
+        pl.col("Company", "Position").fill_null("").str.strip_chars()
+    )
+    dropped = df.filter(pl.col("Company") == "").height
 
-    out_rows = [
-        {
-            "company": company,
-            "n_connections": len(positions),
-            "positions": "; ".join(sorted({p for p in positions if p})),
-        }
-        for company, positions in positions_at.items()
-    ]
-    out_rows.sort(key=lambda r: (-r["n_connections"], r["company"]))
+    position = pl.col("Position")
+    companies = (
+        df.filter(pl.col("Company") != "")
+        .group_by(pl.col("Company").alias("company"))
+        .agg(
+            pl.len().alias("n_connections"),
+            position.filter(position != "")
+            .unique()
+            .sort()
+            .str.join("; ")
+            .alias("positions"),
+        )
+        .sort(["n_connections", "company"], descending=[True, False])
+    )
 
-    with args.out.open("w", encoding="utf-8", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=["company", "n_connections", "positions"])
-        w.writeheader()
-        w.writerows(out_rows)
+    companies.write_csv(args.out)
     print(
-        f"{args.out}: {len(out_rows)} companies from {len(rows)} connections"
+        f"{args.out}: {companies.height} companies from {df.height} connections"
         f" ({dropped} without a company dropped)"
     )
 
