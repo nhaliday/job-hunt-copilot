@@ -54,7 +54,7 @@ class WorkdayClient:
         url = f"https://{self.host}/wday/cxs/{self.tenant}/{self.site}/jobs"
         rows: dict[str, dict] = {}
         offset, total = 0, None
-        while total is None or offset < total:
+        while True:
             r = http.post(
                 url,
                 json={
@@ -66,14 +66,22 @@ class WorkdayClient:
             )
             r.raise_for_status()
             data = r.json()
-            total = data["total"]  # fail loud on schema change
+            if total is None:
+                total = data["total"]  # fail loud on schema change
+            # Terminate on an empty or no-new-rows page, NOT on the reported
+            # total: some tenants report total only on page 0 (0 afterwards),
+            # and page-0 totals can be display-capped — trusting them either
+            # truncates the walk or ends it two pages in.
+            before = len(rows)
             for row in data["jobPostings"]:
                 rows[row["externalPath"]] = row
+            if not data["jobPostings"] or len(rows) == before:
+                break
             offset += _PAGE
         if len(rows) != total:
             print(
-                f"  workday: collected {len(rows)} rows vs total {total}"
-                " (board churn mid-pagination)"
+                f"  workday: collected {len(rows)} rows vs page-0 total {total}"
+                " (board churn or capped/omitted totals)"
             )
         return list(rows.values())
 
