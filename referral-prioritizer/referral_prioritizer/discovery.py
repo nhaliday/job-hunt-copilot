@@ -99,8 +99,11 @@ disambiguate same-name companies), then classify:
 - none: no careers/jobs page exists (tiny firm, defunct, hires via email only).
 - unknown: cannot determine after searching.
 
-Report the underlying ATS when a custom-domain page embeds or redirects to one
-of the five named kinds. careers_url = the postings page you found."""
+A branded careers portal is often only a front-end over one of the named
+ATSes: check where the posting/apply URLs actually lead (e.g. a
+*.myworkdayjobs.com or boards.greenhouse.io URL behind a custom domain) and
+report that underlying ATS. Classify custom only when the application flow
+itself is handled in-house. careers_url = the postings page you found."""
 
 
 def _sig_words(name: str) -> set[str]:
