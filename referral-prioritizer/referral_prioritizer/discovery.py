@@ -237,33 +237,60 @@ async def discover(anth: anthropic.AsyncAnthropic, model: str, row: dict) -> Dis
     return await _parse(anth, model, DISCOVER_SYSTEM, prompt, Discovery, tools=[WEB_SEARCH])
 
 
-async def _validated(http: httpx.AsyncClient, d: Discovery) -> Discovery:
-    # The four probeable kinds arrive implicitly validated (their claims came
-    # from live probes), but a workday claim is only the model's word — and
-    # models surface real-but-internal tenants whose public CxS API is
-    # disabled (401), which would crash a scan. One free request settles it.
-    if d.kind != "workday":
-        return d
-    demote = {"kind": "unknown", "slug": "", "confidence": "low"}
-    prefix, _, site = d.slug.partition("/")
-    if not site:
-        return d.model_copy(update={
-            **demote, "note": f"malformed workday slug {d.slug!r}; {d.note}"[:200],
-        })
-    host = prefix if ".myworkday" in prefix else f"{prefix}.myworkdayjobs.com"
-    tenant = prefix.split(".", 1)[0]
+async def _board_alive(http: httpx.AsyncClient, kind: str, slug: str) -> bool | None:
+    """True = live board, False = invalid claim, None = malformed slug."""
     try:
-        r = await http.post(
-            f"https://{host}/wday/cxs/{tenant}/{site}/jobs",
-            json={"appliedFacets": {}, "limit": 1, "offset": 0, "searchText": ""},
+        if kind == "workday":
+            prefix, _, site = slug.partition("/")
+            if not site:
+                return None
+            host = prefix if ".myworkday" in prefix else f"{prefix}.myworkdayjobs.com"
+            tenant = prefix.split(".", 1)[0]
+            r = await http.post(
+                f"https://{host}/wday/cxs/{tenant}/{site}/jobs",
+                json={"appliedFacets": {}, "limit": 1, "offset": 0, "searchText": ""},
+            )
+            return r.status_code == 200 and "total" in r.json()
+        if not slug or "/" in slug:
+            return None
+        if kind == "greenhouse":
+            r = await http.get(f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs")
+            return r.status_code == 200 and "jobs" in r.json()
+        if kind == "lever":
+            r = await http.get(f"https://api.lever.co/v0/postings/{slug}",
+                               params={"mode": "json", "limit": 1})
+            return r.status_code == 200 and isinstance(r.json(), list)
+        if kind == "ashby":
+            r = await http.get("https://api.ashbyhq.com/posting-api/job-board/"
+                               + urllib.parse.quote(slug))
+            return r.status_code == 200 and "jobs" in r.json()
+        # smartrecruiters: an unknown identifier is 200 + totalFound 0, so a
+        # live-but-empty board is indistinguishable from a wrong slug — treat
+        # both as not scannable (the SR client raises on totalFound 0 anyway).
+        r = await http.get(
+            f"https://api.smartrecruiters.com/v1/companies/{slug}/postings",
+            params={"limit": 1},
         )
-        ok = r.status_code == 200 and "total" in r.json()
+        return r.status_code == 200 and r.json().get("totalFound", 0) > 0
     except (httpx.HTTPError, ValueError):
-        ok = False
+        return False
+
+
+async def _validated(http: httpx.AsyncClient, d: Discovery) -> Discovery:
+    # Every scannable-kind claim from discovery is only the model's word —
+    # live testing surfaced hallucinated/stale slugs reported with high
+    # confidence (a 404 greenhouse board, an internal workday tenant). One
+    # free API request per claim settles it; failures demote loudly instead
+    # of crashing a later scan.
+    if d.kind not in ("greenhouse", "lever", "ashby", "smartrecruiters", "workday"):
+        return d
+    ok = await _board_alive(http, d.kind, d.slug)
     if ok:
         return d
+    reason = "malformed" if ok is None else "not live/scannable"
     return d.model_copy(update={
-        **demote, "note": f"workday {d.slug} not publicly scannable; {d.note}"[:200],
+        "kind": "unknown", "slug": "", "confidence": "low",
+        "note": f"{d.kind} claim {d.slug!r} {reason}; {d.note}"[:200],
     })
 
 

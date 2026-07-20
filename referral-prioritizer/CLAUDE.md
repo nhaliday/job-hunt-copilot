@@ -19,20 +19,21 @@ pipeline is built in reviewable stages; implemented so far:
    `claude-opus-4-8`) verifies uncorroborated hits against sample job titles (no
    tools, ~1c each) and runs web-search discovery for misses and impostors
    (`web_search_20260209`, ~6c each), including workday `"hostprefix/site"` slug
-   extraction. A workday claim is the one kind not implicitly validated by a
-   probe, and models surface real-but-internal tenants whose public CxS API is
-   disabled — so every workday result is checked with one free CxS request and
-   demoted to `unknown` (with the evidence in the note) if not publicly
-   scannable. Structured outputs via `messages.parse`; `pause_turn` is resumed.
-   The CSV is rewritten atomically per resolved row and rows with a
-   `board_source` are skipped on re-runs — interrupted or credit-starved runs
-   resume, and hand-prefilled `board_source=manual` rows are never touched (use
-   that to opt out e.g. stealth placeholders). Both phases are concurrent —
-   probes fan out across threads (workers only fetch; the main thread decides
-   and writes), LLM calls fan out on asyncio under a semaphore with the CSV
-   still written per completion. Flags: `--probe-only` (no key needed),
-   `--dry-run` (counts + cost estimate, no writes), `--limit N`, `--model`,
-   `--concurrency` (phase-B LLM calls, default 8).
+   extraction. Every scannable-kind discovery claim is only the model's word —
+   live testing surfaced hallucinated/stale slugs and real-but-internal workday
+   tenants, all reported with high confidence — so each one is checked against
+   the board's own API with one free request and demoted to `unknown` (with the
+   evidence in the note) if not live and scannable. Structured outputs via
+   `messages.parse`; `pause_turn` is resumed. The CSV is rewritten atomically
+   per resolved row and rows with a `board_source` are skipped on re-runs —
+   interrupted or credit-starved runs resume, and hand-prefilled
+   `board_source=manual` rows are never touched (use that to opt out e.g.
+   stealth placeholders). Both phases are concurrent — probes fan out across
+   threads (workers only fetch; the main thread decides and writes), LLM calls
+   fan out on asyncio under a semaphore with the CSV still written per
+   completion. Flags: `--probe-only` (no key needed), `--dry-run` (counts + cost
+   estimate, no writes), `--limit N`, `--model`, `--concurrency` (phase-B LLM
+   calls, default 8).
 
 Known limitation: a probe-accepted board can be genuine but _secondary_ (a
 sub-org or test board on one ATS while the main careers system lives elsewhere).
