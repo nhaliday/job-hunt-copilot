@@ -19,7 +19,11 @@ pipeline is built in reviewable stages; implemented so far:
    `claude-opus-4-8`) verifies uncorroborated hits against sample job titles (no
    tools, ~1c each) and runs web-search discovery for misses and impostors
    (`web_search_20260209`, ~6c each), including workday `"hostprefix/site"` slug
-   extraction. Structured outputs via `messages.parse`; `pause_turn` is resumed.
+   extraction. A workday claim is the one kind not implicitly validated by a
+   probe, and models surface real-but-internal tenants whose public CxS API is
+   disabled — so every workday result is checked with one free CxS request and
+   demoted to `unknown` (with the evidence in the note) if not publicly
+   scannable. Structured outputs via `messages.parse`; `pause_turn` is resumed.
    The CSV is rewritten atomically per resolved row and rows with a
    `board_source` are skipped on re-runs — interrupted or credit-starved runs
    resume, and hand-prefilled `board_source=manual` rows are never touched (use

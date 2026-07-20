@@ -237,6 +237,36 @@ async def discover(anth: anthropic.AsyncAnthropic, model: str, row: dict) -> Dis
     return await _parse(anth, model, DISCOVER_SYSTEM, prompt, Discovery, tools=[WEB_SEARCH])
 
 
+async def _validated(http: httpx.AsyncClient, d: Discovery) -> Discovery:
+    # The four probeable kinds arrive implicitly validated (their claims came
+    # from live probes), but a workday claim is only the model's word — and
+    # models surface real-but-internal tenants whose public CxS API is
+    # disabled (401), which would crash a scan. One free request settles it.
+    if d.kind != "workday":
+        return d
+    demote = {"kind": "unknown", "slug": "", "confidence": "low"}
+    prefix, _, site = d.slug.partition("/")
+    if not site:
+        return d.model_copy(update={
+            **demote, "note": f"malformed workday slug {d.slug!r}; {d.note}"[:200],
+        })
+    host = prefix if ".myworkday" in prefix else f"{prefix}.myworkdayjobs.com"
+    tenant = prefix.split(".", 1)[0]
+    try:
+        r = await http.post(
+            f"https://{host}/wday/cxs/{tenant}/{site}/jobs",
+            json={"appliedFacets": {}, "limit": 1, "offset": 0, "searchText": ""},
+        )
+        ok = r.status_code == 200 and "total" in r.json()
+    except (httpx.HTTPError, ValueError):
+        ok = False
+    if ok:
+        return d
+    return d.model_copy(update={
+        **demote, "note": f"workday {d.slug} not publicly scannable; {d.note}"[:200],
+    })
+
+
 def _write(rows: list[dict], out: Path) -> None:
     tmp = out.with_suffix(".tmp")
     pl.DataFrame(rows).write_csv(tmp)
@@ -258,25 +288,27 @@ async def stage_b(rows: list[dict], out: Path, model: str, concurrency: int,
     anth = anthropic.AsyncAnthropic(max_retries=8)
     sem = asyncio.Semaphore(concurrency)
 
-    async def resolve_hit(row: dict, hit: ProbeHit) -> None:
+    async def resolve_hit(http: httpx.AsyncClient, row: dict, hit: ProbeHit) -> None:
         async with sem:
             v = await verify(anth, model, row, hit)
             if v.belongs_to_company:
                 _apply(rows, row, out, hit.kind, hit.slug, v.confidence,
                        "probe+verify", "titles match company")
                 return
-            d = await discover(anth, model, row)  # impostor board; find the real one
+            # Impostor board; find the real one.
+            d = await _validated(http, await discover(anth, model, row))
             _apply(rows, row, out, d.kind, d.slug, d.confidence, "llm", d.note, d.careers_url)
 
-    async def resolve_miss(row: dict) -> None:
+    async def resolve_miss(http: httpx.AsyncClient, row: dict) -> None:
         async with sem:
-            d = await discover(anth, model, row)
+            d = await _validated(http, await discover(anth, model, row))
             _apply(rows, row, out, d.kind, d.slug, d.confidence, "llm", d.note, d.careers_url)
 
-    await asyncio.gather(
-        *(resolve_hit(row, hit) for row, hit in verify_jobs),
-        *(resolve_miss(row) for row in discover_jobs),
-    )
+    async with httpx.AsyncClient(timeout=10, follow_redirects=True) as http:
+        await asyncio.gather(
+            *(resolve_hit(http, row, hit) for row, hit in verify_jobs),
+            *(resolve_miss(http, row) for row in discover_jobs),
+        )
 
 
 BOARD_COLS = ("board_kind", "board_slug", "board_url", "board_confidence",
