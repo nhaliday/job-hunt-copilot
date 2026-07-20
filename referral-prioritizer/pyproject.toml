@@ -1,0 +1,20 @@
+[project]
+name = "referral-prioritizer"
+version = "0.1.0"
+description = "Prioritize a LinkedIn connections export for referral asks: extract companies, discover their job boards, and stage them for scanning and ranking."
+requires-python = ">=3.14"
+dependencies = [
+    "anthropic>=0.40",
+    "pydantic>=2",
+    "httpx>=0.27",
+]
+
+# Installable as a dependency (e.g. a content repo pinning this tooling via a
+# path/git source); the connections data stays outside the package and is
+# passed in by path.
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["referral_prioritizer"]

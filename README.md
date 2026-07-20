@@ -4,7 +4,7 @@ Tooling for running a job hunt like an engineering project: a Markdown → PDF
 pipeline for resumes and cover letters, and an LLM-driven job-board scanner that
 turns hundreds of postings into a structured, ranked shortlist.
 
-Two self-contained subprojects, each its own uv project:
+Three self-contained subprojects, each its own uv project:
 
 ## [`resume-printer/`](resume-printer/)
 
@@ -41,6 +41,14 @@ schema.
 Scan configs are plain Python modules (`scans/<company>.py`) kept in the
 caller's project, not in the engine — see
 [`job-description-scan/examples/example_scan.py`](job-description-scan/examples/example_scan.py).
+
+## [`referral-prioritizer/`](referral-prioritizer/)
+
+Turns a LinkedIn connections export into a prioritized referral-ask list, in
+stages: extract distinct companies, discover each company's job board (probe the
+supported board APIs first, LLM + web search for the rest), then scan and rank.
+Early stage — extraction is implemented; discovery and ranking stages are in
+progress.
 
 ## Usage shape
 
