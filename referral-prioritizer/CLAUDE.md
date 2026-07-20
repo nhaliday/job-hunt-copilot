@@ -23,9 +23,12 @@ pipeline is built in reviewable stages; implemented so far:
    The CSV is rewritten atomically per resolved row and rows with a
    `board_source` are skipped on re-runs — interrupted or credit-starved runs
    resume, and hand-prefilled `board_source=manual` rows are never touched (use
-   that to opt out e.g. stealth placeholders). Flags: `--probe-only` (no key
-   needed), `--dry-run` (counts + cost estimate, no writes), `--limit N`,
-   `--model`.
+   that to opt out e.g. stealth placeholders). Both phases are concurrent —
+   probes fan out across threads (workers only fetch; the main thread decides
+   and writes), LLM calls fan out on asyncio under a semaphore with the CSV
+   still written per completion. Flags: `--probe-only` (no key needed),
+   `--dry-run` (counts + cost estimate, no writes), `--limit N`, `--model`,
+   `--concurrency` (phase-B LLM calls, default 8).
 
 Known limitation: a probe-accepted board can be genuine but _secondary_ (a
 sub-org or test board on one ATS while the main careers system lives elsewhere).

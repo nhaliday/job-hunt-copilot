@@ -1,27 +1,31 @@
 """Enrich a companies CSV with each company's job board (kind + slug).
 
-Two stages per un-enriched row:
+Two phases over the un-enriched rows:
 
-- Stage A (free): probe the four slug-guessable board APIs (greenhouse, lever,
-  ashby, smartrecruiters) with name-derived slug variants. A hit whose board
-  identity is corroborated by a display name is accepted outright; a hit
-  without corroboration is only a candidate — generic-word slugs are often a
-  different company's board — and goes to Stage B for verification.
-- Stage B (Anthropic API): a cheap no-tools call verifies uncorroborated
-  probe hits against sample job titles; misses and impostors get a discovery
-  call with the server-side web_search tool that finds the careers page and
-  extracts the provider + slug.
+- Phase A — probe (free, thread-parallel): try the four slug-guessable board
+  APIs (greenhouse, lever, ashby, smartrecruiters) with name-derived slug
+  variants. A hit is accepted outright only when a display name covers the
+  company name AND the board has postings — an empty same-name board is
+  impostor bait, and generic-word slugs are often a different company's board.
+  Probing is pure network wait, so rows fan out across threads; workers only
+  fetch, the main thread decides and writes.
+- Phase B — LLM (Anthropic API, asyncio fan-out): a cheap no-tools call
+  verifies uncorroborated probe hits against sample job titles; misses and
+  impostors get a discovery call with the server-side web_search tool that
+  finds the careers page and extracts the provider + slug.
 
 Adds columns in place (never touching input columns): board_kind, board_slug,
 board_url, board_confidence, board_source, board_note. The CSV is rewritten
-atomically after every resolved row, and rows with a non-empty board_source
-are skipped on re-runs — so interrupted or credit-starved runs resume, and
-hand-prefilled rows (board_source=manual) are never touched.
+atomically as rows resolve, and rows with a non-empty board_source are skipped
+on re-runs — so interrupted or credit-starved runs resume, and hand-prefilled
+rows (board_source=manual) are never touched.
 """
 
 import argparse
+import asyncio
 import re
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -32,6 +36,8 @@ import polars as pl
 from pydantic import BaseModel, Field
 
 WEB_SEARCH = {"type": "web_search_20260209", "name": "web_search", "max_uses": 5}
+
+_PROBE_WORKERS = 12
 
 # Words too generic to corroborate a board's identity on their own.
 _STOPWORDS = {"inc", "llc", "ltd", "lp", "co", "corp", "company", "group", "the", "of", "and"}
@@ -174,12 +180,21 @@ def probe(http: httpx.Client, company: str) -> ProbeHit | None:
     return None
 
 
-def _parse(anth: anthropic.Anthropic, model: str, system: str, prompt: str,
-           output_format: type[BaseModel], tools: list[dict] | None = None):
+def probe_all(pending: list[dict]) -> list[ProbeHit | None]:
+    # Workers only fetch (probe is pure network wait — blocked threads release
+    # the GIL and sleep in the kernel); the main thread consumes results in
+    # order and makes every accept decision, so there is no shared mutation.
+    with httpx.Client(timeout=10, follow_redirects=True) as http:
+        with ThreadPoolExecutor(max_workers=_PROBE_WORKERS) as ex:
+            return list(ex.map(lambda row: probe(http, row["company"]), pending))
+
+
+async def _parse(anth: anthropic.AsyncAnthropic, model: str, system: str, prompt: str,
+                 output_format: type[BaseModel], tools: list[dict] | None = None):
     messages: list[dict] = [{"role": "user", "content": prompt}]
     extra = {"tools": tools} if tools else {}
     for _ in range(4):
-        response = anth.messages.parse(
+        response = await anth.messages.parse(
             model=model,
             max_tokens=16000,
             thinking={"type": "adaptive"},
@@ -202,7 +217,8 @@ def _context(row: dict) -> str:
     )
 
 
-def verify(anth: anthropic.Anthropic, model: str, row: dict, hit: ProbeHit) -> Verification:
+async def verify(anth: anthropic.AsyncAnthropic, model: str, row: dict,
+                 hit: ProbeHit) -> Verification:
     titles = "\n".join(f"- {t}" for t in hit.titles if t) or "(no titles returned)"
     display = f"\nBoard display name: {hit.display_name}" if hit.display_name else ""
     prompt = (
@@ -210,18 +226,54 @@ def verify(anth: anthropic.Anthropic, model: str, row: dict, hit: ProbeHit) -> V
         f"Sample job titles on that board:\n{titles}\n\nDoes this board belong to"
         " this company?"
     )
-    return _parse(anth, model, VERIFY_SYSTEM, prompt, Verification)
+    return await _parse(anth, model, VERIFY_SYSTEM, prompt, Verification)
 
 
-def discover(anth: anthropic.Anthropic, model: str, row: dict) -> Discovery:
+async def discover(anth: anthropic.AsyncAnthropic, model: str, row: dict) -> Discovery:
     prompt = f"{_context(row)}\n\nFind this company's job board."
-    return _parse(anth, model, DISCOVER_SYSTEM, prompt, Discovery, tools=[WEB_SEARCH])
+    return await _parse(anth, model, DISCOVER_SYSTEM, prompt, Discovery, tools=[WEB_SEARCH])
 
 
-def _write(df_rows: list[dict], out: Path) -> None:
+def _write(rows: list[dict], out: Path) -> None:
     tmp = out.with_suffix(".tmp")
-    pl.DataFrame(df_rows).write_csv(tmp)
+    pl.DataFrame(rows).write_csv(tmp)
     tmp.replace(out)
+
+
+def _apply(rows: list[dict], row: dict, out: Path, kind: str, slug: str,
+           confidence: str, source: str, note: str, url: str = "") -> None:
+    row["board_kind"], row["board_slug"] = kind, slug
+    row["board_confidence"], row["board_source"] = confidence, source
+    row["board_note"] = note
+    row["board_url"] = url or (_BOARD_URL[kind].format(slug=slug) if kind in _BOARD_URL else "")
+    _write(rows, out)
+    print(f"  {row['company']}: {kind} {slug} [{source}, {confidence}]")
+
+
+async def stage_b(rows: list[dict], out: Path, model: str, concurrency: int,
+                  verify_jobs: list[tuple[dict, ProbeHit]], discover_jobs: list[dict]) -> None:
+    anth = anthropic.AsyncAnthropic(max_retries=8)
+    sem = asyncio.Semaphore(concurrency)
+
+    async def resolve_hit(row: dict, hit: ProbeHit) -> None:
+        async with sem:
+            v = await verify(anth, model, row, hit)
+            if v.belongs_to_company:
+                _apply(rows, row, out, hit.kind, hit.slug, v.confidence,
+                       "probe+verify", "titles match company")
+                return
+            d = await discover(anth, model, row)  # impostor board; find the real one
+            _apply(rows, row, out, d.kind, d.slug, d.confidence, "llm", d.note, d.careers_url)
+
+    async def resolve_miss(row: dict) -> None:
+        async with sem:
+            d = await discover(anth, model, row)
+            _apply(rows, row, out, d.kind, d.slug, d.confidence, "llm", d.note, d.careers_url)
+
+    await asyncio.gather(
+        *(resolve_hit(row, hit) for row, hit in verify_jobs),
+        *(resolve_miss(row) for row in discover_jobs),
+    )
 
 
 BOARD_COLS = ("board_kind", "board_slug", "board_url", "board_confidence",
@@ -237,6 +289,8 @@ def main() -> None:
                     help="probe and print per-stage counts + cost estimate, no writes")
     ap.add_argument("--limit", type=int, help="resolve at most N rows")
     ap.add_argument("--model", default="claude-opus-4-8")
+    ap.add_argument("--concurrency", type=int, default=8,
+                    help="max concurrent LLM calls in phase B")
     args = ap.parse_args()
 
     df = pl.read_csv(args.companies, infer_schema_length=0)
@@ -253,54 +307,36 @@ def main() -> None:
         pending = pending[: args.limit]
     print(f"{len(rows)} rows, {len(pending)} pending")
 
-    anth = None if (args.probe_only or args.dry_run) else anthropic.Anthropic(max_retries=8)
-    accepted = to_verify = to_discover = 0
-    with httpx.Client(timeout=10, follow_redirects=True) as http:
-        for row in pending:
-            hit = probe(http, row["company"])
-            outcome = None
-            # Auto-accept needs BOTH a covering display name and actual
-            # postings: an empty board matches any same-name impostor and is
-            # unscannable even when genuine.
-            if hit and any(hit.titles) and _corroborated(row["company"], hit.display_name):
-                outcome = (hit.kind, hit.slug, "high", "probe",
-                           f"display name: {hit.display_name}")
-                accepted += 1
-            elif hit and anth:
-                v = verify(anth, args.model, row, hit)
-                if v.belongs_to_company:
-                    outcome = (hit.kind, hit.slug, v.confidence, "probe+verify",
-                               "titles match company")
-                    accepted += 1
-                else:
-                    hit = None  # impostor board; fall through to discovery
-            elif hit:
-                to_verify += 1
+    hits = probe_all(pending)
 
-            if hit is None:
-                if anth:
-                    d = discover(anth, args.model, row)
-                    outcome = (d.kind, d.slug, d.confidence, "llm", d.note)
-                    accepted += 1
-                    row["board_url"] = d.careers_url
-                else:
-                    to_discover += 1
+    verify_jobs: list[tuple[dict, ProbeHit]] = []
+    discover_jobs: list[dict] = []
+    accepted = 0
+    for row, hit in zip(pending, hits):
+        # Auto-accept needs BOTH a covering display name and actual postings:
+        # an empty board matches any same-name impostor and is unscannable
+        # even when genuine.
+        if hit and any(hit.titles) and _corroborated(row["company"], hit.display_name):
+            accepted += 1
+            if not args.dry_run:
+                _apply(rows, row, args.companies, hit.kind, hit.slug, "high",
+                       "probe", f"display name: {hit.display_name}")
+        elif hit:
+            verify_jobs.append((row, hit))
+        else:
+            discover_jobs.append(row)
 
-            if outcome and not args.dry_run:
-                kind, slug, confidence, source, note = outcome
-                row["board_kind"], row["board_slug"] = kind, slug
-                row["board_confidence"], row["board_source"] = confidence, source
-                row["board_note"] = note
-                if not row["board_url"] and kind in _BOARD_URL:
-                    row["board_url"] = _BOARD_URL[kind].format(slug=slug)
-                _write(rows, args.companies)
-                print(f"  {row['company']}: {kind} {slug} [{source}, {confidence}]")
-
-    print(f"\nresolved: {accepted} | needs verify: {to_verify} | needs discovery: {to_discover}")
-    if to_verify or to_discover:
-        est = to_verify * 0.01 + to_discover * 0.06
+    print(f"probe-accepted: {accepted} | needs verify: {len(verify_jobs)}"
+          f" | needs discovery: {len(discover_jobs)}")
+    if args.probe_only or args.dry_run:
+        est = len(verify_jobs) * 0.01 + len(discover_jobs) * 0.06
         print(f"est. LLM cost for the remainder on {args.model}: ~${est:.2f}"
               " (verify ~1c, discovery ~6c incl. searches)")
+        return
+
+    asyncio.run(stage_b(rows, args.companies, args.model, args.concurrency,
+                        verify_jobs, discover_jobs))
+    print("done")
 
 
 if __name__ == "__main__":
