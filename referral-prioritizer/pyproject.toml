@@ -8,7 +8,14 @@ dependencies = [
     "pydantic>=2",
     "httpx>=0.27",
     "polars>=1",
+    "job-description-scan",
 ]
+
+# Sibling-subproject dependency: stats (and later scan/rank stages) reuse the
+# engine's board clients so location semantics match scans exactly. Consuming
+# projects map job-description-scan to their own pinned copy.
+[tool.uv.sources]
+job-description-scan = { path = "../job-description-scan", editable = true }
 
 # Installable as a dependency (e.g. a content repo pinning this tooling via a
 # path/git source); the connections data stays outside the package and is
