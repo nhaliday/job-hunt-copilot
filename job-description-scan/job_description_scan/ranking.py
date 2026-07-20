@@ -452,7 +452,10 @@ def main() -> None:
     args = ap.parse_args()
 
     scan, ladders = _load_ladders(args.scan, args.ladder)
-    board = {p.id: p for p in make_client(scan.source).iter_postings()}
+    board = {
+        p.id: p
+        for p in make_client(scan.source, scan.location_filter).iter_postings()
+    }
     scan_tail = args.scan.rsplit(".", 1)[-1]
     resume_text = args.resume.read_text(encoding="utf-8") if args.resume else ""
 

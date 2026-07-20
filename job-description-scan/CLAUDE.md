@@ -63,8 +63,15 @@ resume.
 1. Copy `examples/example_scan.py` to `scans/<name>.py`
 2. Edit the `Extraction` and (optional) `Comparison` Pydantic classes to match
    the role family you want to characterize
-3. Edit the `scan = Scan(...)` block: source board (`greenhouse`, `ashby`, or
-   `lever` — all three implemented), slug, model
+3. Edit the `scan = Scan(...)` block: source board (`greenhouse`, `ashby`,
+   `lever`, `workday`, or `smartrecruiters` — all five implemented), slug,
+   model. Slug formats: the big three use the board's URL slug; `workday` uses
+   `"hostprefix/site"` (e.g. `"acme.wd5/Acme_Careers"`; a hostprefix containing
+   `.myworkday` is taken as a full host, covering `myworkdaysite.com` tenants);
+   `smartrecruiters` uses the API company identifier, which sometimes differs
+   from the careers-site slug — a wrong identifier returns `totalFound: 0` and
+   the client raises on it, so verify with
+   `curl https://api.smartrecruiters.com/v1/companies/<id>/postings` first
 4. Run: `uv run python -m job_description_scan --scan scans.<name>`
 
 Pydantic `Field(description=...)` strings flow into the JSON schema sent to the
@@ -78,6 +85,13 @@ LLM, so use them to guide extraction at the field level.
    the kind to the `BoardKind` Literal in `config.py`
 3. Map the URL pattern and response shape to
    `Posting(id, title, location, content_text, url, raw)`
+4. If the board is list-then-detail (the list response carries no job body, so
+   content costs one HTTP GET per posting), accept the optional
+   `location_filter` constructor param and skip the detail GET for postings
+   whose list-row location can't match (see `boards/workday.py`). Still yield
+   every posting — `pipeline.run_scan` applies the authoritative filter, so
+   `_filtered` counts stay identical across boards. One-shot boards don't take
+   the param.
 
 ## Architecture
 
@@ -91,7 +105,8 @@ LLM, so use them to guide extraction at the field level.
 
 Per-scan inputs (`config.Scan`):
 
-- `source`: `BoardSource(kind, slug)` — Greenhouse/Ashby/Lever
+- `source`: `BoardSource(kind, slug)` —
+  Greenhouse/Ashby/Lever/Workday/SmartRecruiters
 - `extraction`: Pydantic class for JD-only facts (always populated)
 - `comparison`: optional Pydantic class for fit/gap fields (populated when
   `--resume` provided)
@@ -102,7 +117,15 @@ Per-scan inputs (`config.Scan`):
   the LLM call. Postings that don't match are skipped entirely (no extraction
   cost). See `examples/example_scan.py`. Title content is never filtered — only
   location is, since location is structured metadata while titles encode role
-  nuance worth letting the LLM judge.
+  nuance worth letting the LLM judge. For the list-then-detail boards
+  (`workday`, `smartrecruiters`) the filter is additionally pushed down into the
+  client to skip per-posting detail GETs; `_filtered` counts are unchanged, and
+  note `--limit` caps LLM calls, not these HTTP fetches. **Workday gotcha**: a
+  single-location list row is bare "City, ST" with no country, so a
+  country-anchored regex (`United States`) prefilters everything as non-matching
+  — write Workday filters against city/state/"Remote" forms. Multi-location rows
+  ("2 Locations") are always detail-resolved to the full location set (city +
+  country descriptors) before filtering, so they're safe either way.
 
 ## Concurrency
 

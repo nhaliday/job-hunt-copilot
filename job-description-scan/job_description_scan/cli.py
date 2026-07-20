@@ -52,7 +52,7 @@ async def _amain(args: argparse.Namespace) -> None:
     scan_tail = args.scan.rsplit(".", 1)[-1]
     out_path = args.out or Path("_output") / f"{scan_tail}.jsonl"
 
-    client = make_client(scan.source)
+    client = make_client(scan.source, scan.location_filter)
 
     total_in = total_out = total_cache_read = 0
     filtered = 0

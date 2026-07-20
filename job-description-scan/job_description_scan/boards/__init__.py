@@ -1,4 +1,5 @@
 import html
+import re
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from typing import Iterable, Protocol
@@ -45,10 +46,14 @@ def strip_html(raw: str) -> str:
     return "\n".join(line.strip() for line in text.splitlines() if line.strip())
 
 
-def make_client(source: BoardSource) -> BoardClient:
+def make_client(
+    source: BoardSource, location_filter: re.Pattern[str] | None = None
+) -> BoardClient:
     from .ashby import AshbyClient
     from .greenhouse import GreenhouseClient
     from .lever import LeverClient
+    from .smartrecruiters import SmartRecruitersClient
+    from .workday import WorkdayClient
 
     if source.kind == "greenhouse":
         return GreenhouseClient(source.slug)
@@ -56,4 +61,12 @@ def make_client(source: BoardSource) -> BoardClient:
         return AshbyClient(source.slug)
     if source.kind == "lever":
         return LeverClient(source.slug)
+    # List-then-detail boards: content costs one GET per posting, so only these
+    # clients take the location filter — to skip detail fetches for postings
+    # that can't match. Semantics are unchanged: every posting is still
+    # yielded, and pipeline.run_scan applies the authoritative filter.
+    if source.kind == "workday":
+        return WorkdayClient(source.slug, location_filter)
+    if source.kind == "smartrecruiters":
+        return SmartRecruitersClient(source.slug, location_filter)
     raise ValueError(f"Unknown board kind: {source.kind!r}")

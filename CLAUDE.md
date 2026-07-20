@@ -5,9 +5,9 @@ Generic job-hunt tooling. Two self-contained subprojects (own `pyproject.toml`,
 
 - **`resume-printer/`** — Markdown → PDF pipeline for resumes and cover letters.
   See [`resume-printer/CLAUDE.md`](resume-printer/CLAUDE.md).
-- **`job-description-scan/`** — Greenhouse/Ashby/Lever job-board scanner with
-  LLM-driven structured extraction, resume comparison, and a pairwise-ranking
-  second pass. See
+- **`job-description-scan/`** — job-board scanner (Greenhouse, Ashby, Lever,
+  Workday, SmartRecruiters) with LLM-driven structured extraction, resume
+  comparison, and a pairwise-ranking second pass. See
   [`job-description-scan/CLAUDE.md`](job-description-scan/CLAUDE.md).
 
 ## No personal content

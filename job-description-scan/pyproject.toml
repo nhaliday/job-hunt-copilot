@@ -1,7 +1,7 @@
 [project]
 name = "job-description-scan"
 version = "0.1.0"
-description = "Scrape Greenhouse/Ashby/Lever job boards and run LLM extraction with per-scan Pydantic schemas."
+description = "Scrape Greenhouse/Ashby/Lever/Workday/SmartRecruiters job boards and run LLM extraction with per-scan Pydantic schemas."
 requires-python = ">=3.14"
 dependencies = [
     "anthropic>=0.40",

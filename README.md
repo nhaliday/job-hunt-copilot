@@ -21,8 +21,9 @@ Markdown (with pandoc attributes) → styled one-page PDF via pandoc + WeasyPrin
 
 ## [`job-description-scan/`](job-description-scan/)
 
-Scans a company's job board (Greenhouse, Ashby, or Lever) and runs each posting
-through an LLM with a per-scan Pydantic schema.
+Scans a company's job board (Greenhouse, Ashby, Lever, Workday, or
+SmartRecruiters) and runs each posting through an LLM with a per-scan Pydantic
+schema.
 
 - **Structured extraction** — role family, level, years-of-experience,
   required/desired quals; field descriptions in the schema steer the model.

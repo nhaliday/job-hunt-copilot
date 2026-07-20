@@ -104,11 +104,18 @@ class Comparison(BaseModel):
 
 # Optional deterministic pre-filter on Posting.location (skipped postings cost
 # nothing). Match structured metadata only — never filter on title.
+# Workday caveat: single-location list rows are bare "City, ST" with no country,
+# so a country-anchored regex like this one matches nothing there — write
+# Workday filters against city/state/"Remote" forms (see CLAUDE.md).
 US_LOCATION = re.compile(r"\b(USA?|United States)\b", re.IGNORECASE)
 
 
 scan = Scan(
-    source=BoardSource(kind="greenhouse", slug="acme"),  # greenhouse | ashby | lever
+    # kind: greenhouse | ashby | lever | workday | smartrecruiters.
+    # Slugs: workday is "hostprefix/site" (e.g. "acme.wd5/Acme_Careers");
+    # smartrecruiters is the API company identifier (may differ from the
+    # careers-site slug). See CLAUDE.md "Adding a new scan".
+    source=BoardSource(kind="greenhouse", slug="acme"),
     extraction=Extraction,
     comparison=Comparison,
     # Reference docs inlined into the cached system prompt. This example
