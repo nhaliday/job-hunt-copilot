@@ -45,13 +45,36 @@ pipeline is built in reviewable stages; implemented so far:
    Flags: `--location-filter`, `--workday-location-filter` (defaults mirror a
    US+Canada scope), `--workers`.
 
+4. **Bulk scan + rank** (`referral_prioritizer/scan.py`) — runs the
+   job-description-scan engine (as a library) over every scannable board in the
+   companies CSV, deduped by `(board_kind, board_slug)`, then a pairwise ranking
+   per configured ladder, then writes a per-company `summary.csv` (fit-tier
+   counts + top-3 per ladder) — the input to the later human gating pass.
+   Generic orchestration only: extraction schemas, location filters, the
+   cheap-model prefilter criterion, and ranking ladders all come from a
+   **factory module in the consuming project** (`--boards scans.boards`,
+   imported from cwd) exposing `make_scan(kind, slug) -> Scan` and
+   `ladders() -> list[Ladder]`. Boards run in a thread pool
+   (`--board-concurrency`, default 4), each with its own asyncio loop and
+   per-board LLM fan-out (`--concurrency`, default 8). Per-board outputs under
+   `--out-dir`: `<kind>-<slug>.jsonl` (written as `.partial`, renamed on
+   completion — so existence means finished and re-runs skip unless `--force`),
+   `-dropped.jsonl` (prefilter drops with the model's reasons — skim to validate
+   the criterion), `.log`, and `-rank-<role>.jsonl` for ladders with ≥2 deduped
+   clusters (round-robin ≤12 clusters, swiss above). The board fetch is cached
+   in-process so ranking's content join doesn't re-fetch. `summary.csv` is
+   rebuilt from disk artifacts every run, so resumed or `--only`-filtered runs
+   stay coherent. Flags: `--only <substr>`, `--limit N` (smoke), `--model`,
+   `--judge-model` (default `claude-opus-4-8`), `--skip-rank`,
+   `--no-order-swap`, `--dry-run` (counts + cost estimate, no spend or HTTP).
+
 Known limitation: a probe-accepted board can be genuine but _secondary_ (a
 sub-org or test board on one ATS while the main careers system lives elsewhere).
 The pre-gate stats stage will expose these via posting counts.
 
-Roadmap (not yet implemented): LLM name/title normalization columns, free
-pre-gate posting stats, a human gating pass, and a human-judge Swiss +
-Bradley–Terry ranking over the gated subset.
+Roadmap (not yet implemented): LLM name/title normalization columns, a human
+gating pass, and a human-judge Swiss + Bradley–Terry ranking over the gated
+subset.
 
 ## Tooling here, data in the consuming project
 
@@ -70,6 +93,14 @@ uv run python -m referral_prioritizer.discovery --companies data/Companies.csv -
 uv run python -m referral_prioritizer.discovery --companies data/Companies.csv --probe-only
 # Stage B needs ANTHROPIC_API_KEY (e.g. via direnv):
 direnv exec . uv run python -m referral_prioritizer.discovery --companies data/Companies.csv
+
+uv run python -m referral_prioritizer.stats --companies data/Companies.csv
+
+# Bulk scan + rank (factory module + resume live in the consuming project):
+uv run python -m referral_prioritizer.scan --companies data/Companies.csv --dry-run
+direnv exec . uv run python -m referral_prioritizer.scan \
+  --companies data/Companies.csv --boards scans.boards \
+  --resume _output/resumes/rendered-variant.md
 ```
 
 Output is deterministically ordered (`-n_connections`, then name): re-running
