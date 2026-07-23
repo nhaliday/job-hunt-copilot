@@ -57,6 +57,21 @@ SCANNABLE = ("greenhouse", "ashby", "lever", "workday", "smartrecruiters")
 # instead of round-robin (which is quadratic in judge calls).
 SWISS_THRESHOLD = 12
 
+# The tournament exists to surface a reliable top-3 per board, so huge pools
+# (a 233-cluster swe ladder was observed — ~2300 judge calls, ~an hour) are
+# pre-trimmed to the best MAX_POOL clusters by fit tier, then level proximity
+# to a mid/senior IC, before any judge call. The trim is printed.
+MAX_POOL = 24
+_LEVEL_ORDER = {
+    "senior": 0,
+    "engineer": 1,
+    "staff": 2,
+    "entry": 3,
+    "principal": 4,
+    "unknown": 5,
+    "distinguished": 6,
+}
+
 # $/1M tokens (input, output) for the --dry-run estimate only.
 _PRICES = {
     "claude-opus-4-8": (5.0, 25.0),
@@ -206,6 +221,20 @@ def _rank_board(
         cands = dedupe(joined, None)
         if len(cands) < 2:
             continue
+        if len(cands) > MAX_POOL:
+            cands.sort(
+                key=lambda c: (
+                    _TIER_ORDER.get(c.tier, 9),
+                    _LEVEL_ORDER.get(c.level, 9),
+                    c.title,
+                )
+            )
+            print(
+                f"[{board.label}] {role_key}: trimming pool "
+                f"{len(cands)} -> {MAX_POOL} by tier/level",
+                flush=True,
+            )
+            cands = cands[:MAX_POOL]
         schedule = "swiss" if len(cands) > SWISS_THRESHOLD else "round-robin"
         print(
             f"[{board.label}] ranking {role_key}: {len(cands)} clusters "
