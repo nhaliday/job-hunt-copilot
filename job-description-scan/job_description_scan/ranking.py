@@ -360,37 +360,45 @@ async def run_ladder(
     anth = anthropic.AsyncAnthropic(max_retries=8)
     results: list[dict] = []
 
-    if schedule == "round-robin":
-        directed = _directed(list(itertools.combinations(range(n), 2)), order_swap, rng)
-        results = await _run_comparisons(
-            anth, model, system_blocks, cands, directed, concurrency
-        )
-    else:  # swiss
-        played: set[frozenset] = set()
-        score = [0.0] * n
-        for _ in range(_swiss_rounds(n, rounds)):
-            order = sorted(range(n), key=lambda i: (-score[i], rng.random()))
-            matchups, used = [], set()
-            for i in order:
-                if i in used:
-                    continue
-                for j in order:
-                    if j == i or j in used or frozenset((i, j)) in played:
-                        continue
-                    matchups.append((i, j))
-                    used.update((i, j))
-                    played.add(frozenset((i, j)))
-                    break
-            if not matchups:
-                break
-            directed = _directed(matchups, order_swap, rng)
-            round_results = await _run_comparisons(
+    # Close the client before the caller's event loop does — otherwise its
+    # pooled connections get finalized after asyncio.run() tears the loop
+    # down and httpx raises "Event loop is closed" noise from __del__.
+    try:
+        if schedule == "round-robin":
+            directed = _directed(
+                list(itertools.combinations(range(n), 2)), order_swap, rng
+            )
+            results = await _run_comparisons(
                 anth, model, system_blocks, cands, directed, concurrency
             )
-            results.extend(round_results)
-            for r in round_results:  # update standings for next pairing
-                if r["winner"] is not None:
-                    score[r["winner"]] += 1.0
+        else:  # swiss
+            played: set[frozenset] = set()
+            score = [0.0] * n
+            for _ in range(_swiss_rounds(n, rounds)):
+                order = sorted(range(n), key=lambda i: (-score[i], rng.random()))
+                matchups, used = [], set()
+                for i in order:
+                    if i in used:
+                        continue
+                    for j in order:
+                        if j == i or j in used or frozenset((i, j)) in played:
+                            continue
+                        matchups.append((i, j))
+                        used.update((i, j))
+                        played.add(frozenset((i, j)))
+                        break
+                if not matchups:
+                    break
+                directed = _directed(matchups, order_swap, rng)
+                round_results = await _run_comparisons(
+                    anth, model, system_blocks, cands, directed, concurrency
+                )
+                results.extend(round_results)
+                for r in round_results:  # update standings for next pairing
+                    if r["winner"] is not None:
+                        score[r["winner"]] += 1.0
+    finally:
+        await anth.close()
 
     _report_errors(results)
     return rank(cands, results)

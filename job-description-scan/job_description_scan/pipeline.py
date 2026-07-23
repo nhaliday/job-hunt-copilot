@@ -134,21 +134,26 @@ async def run_scan(
     # max_retries above the SDK's default (2) — at high concurrency 429s become
     # common; the SDK already retries with exponential backoff.
     anth = anthropic.AsyncAnthropic(max_retries=8)
+    # Close the client before the caller's event loop does — otherwise its
+    # pooled connections get finalized after asyncio.run() tears the loop
+    # down and httpx raises "Event loop is closed" noise from __del__.
+    try:
+        if scan.prefilter is not None:
+            matched, audit_rows = await _run_prefilter(
+                anth, scan.prefilter, matched, concurrency
+            )
+            for row in audit_rows:
+                yield row
+            if not matched:
+                return
 
-    if scan.prefilter is not None:
-        matched, audit_rows = await _run_prefilter(
-            anth, scan.prefilter, matched, concurrency
-        )
-        for row in audit_rows:
+        async def call(posting: Posting) -> dict:
+            return await _call(anth, model, system_blocks, Result, posting)
+
+        async for row in lead_then_fanout(matched, call, concurrency):
             yield row
-        if not matched:
-            return
-
-    async def call(posting: Posting) -> dict:
-        return await _call(anth, model, system_blocks, Result, posting)
-
-    async for row in lead_then_fanout(matched, call, concurrency):
-        yield row
+    finally:
+        await anth.close()
 
 
 async def _run_prefilter(
