@@ -53,7 +53,7 @@ class WorkdayClient:
         # postings churn mid-walk, so keep the walk short and dedupe by path.
         url = f"https://{self.host}/wday/cxs/{self.tenant}/{self.site}/jobs"
         rows: dict[str, dict] = {}
-        offset, total = 0, None
+        offset, total, pathless = 0, None, 0
         while True:
             r = http.post(
                 url,
@@ -74,10 +74,19 @@ class WorkdayClient:
             # truncates the walk or ends it two pages in.
             before = len(rows)
             for row in data["jobPostings"]:
-                rows[row["externalPath"]] = row
+                path = row.get("externalPath")
+                if path:  # observed: degenerate rows with only bulletFields
+                    rows[path] = row
+                else:
+                    pathless += 1
             if not data["jobPostings"] or len(rows) == before:
                 break
             offset += _PAGE
+        if pathless:
+            print(
+                f"  workday: skipped {pathless} list rows without externalPath"
+                " (no detail to fetch or apply to)"
+            )
         if len(rows) != total:
             print(
                 f"  workday: collected {len(rows)} rows vs page-0 total {total}"

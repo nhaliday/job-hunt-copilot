@@ -89,7 +89,9 @@ def _count_workday(http: httpx.Client, slug: str, country_pattern: re.Pattern,
         page = r.json()["jobPostings"]
         before = len(by_path)
         for row in page:
-            by_path[row["externalPath"]] = row
+            # Degenerate rows with only bulletFields (no path) exist; skip.
+            if row.get("externalPath"):
+                by_path[row["externalPath"]] = row
         if not page or len(by_path) == before:
             break
         offset += 20
