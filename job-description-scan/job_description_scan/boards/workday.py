@@ -1,4 +1,5 @@
 import re
+import time
 from typing import Iterable
 
 import httpx
@@ -9,6 +10,28 @@ _PAGE = 20  # server-enforced page cap
 # locationsText for a multi-location posting is an aggregate like "2 Locations";
 # the true locations exist only in the detail response.
 _AGGREGATE = re.compile(r"^\d+ Locations$")
+
+_RETRY_STATUS = {429, 500, 502, 503, 504}
+
+
+def _request(
+    http: httpx.Client, method: str, url: str, json: dict | None = None
+) -> httpx.Response:
+    """Request with backoff on transient failures. A board walk is thousands
+    of sequential GETs; without retries a single stray 502 aborts it all."""
+    for attempt in range(4):
+        try:
+            r = http.request(method, url, json=json)
+            if r.status_code in _RETRY_STATUS and attempt < 3:
+                time.sleep(0.5 * 2**attempt)
+                continue
+            r.raise_for_status()
+            return r
+        except httpx.TransportError:
+            if attempt == 3:
+                raise
+            time.sleep(0.5 * 2**attempt)
+    raise AssertionError("unreachable")
 
 
 def _enriched_location(info: dict) -> str:
@@ -45,7 +68,15 @@ class WorkdayClient:
     def iter_postings(self) -> Iterable[Posting]:
         with httpx.Client(timeout=30) as http:
             for row in self._list_rows(http):
-                yield self._posting(http, row)
+                try:
+                    yield self._posting(http, row)
+                except httpx.HTTPError as e:
+                    # Persistent failure on ONE detail GET (post-retry) —
+                    # skip the posting loudly rather than abort the board.
+                    print(
+                        f"  workday: skipping {row.get('externalPath')}: "
+                        f"{type(e).__name__}: {e}"
+                    )
 
     def _list_rows(self, http: httpx.Client) -> list[dict]:
         # Materialize the whole list before any detail fetch: offset pagination
@@ -55,7 +86,9 @@ class WorkdayClient:
         rows: dict[str, dict] = {}
         offset, total, pathless = 0, None, 0
         while True:
-            r = http.post(
+            r = _request(
+                http,
+                "POST",
                 url,
                 json={
                     "appliedFacets": {},
@@ -64,7 +97,6 @@ class WorkdayClient:
                     "searchText": "",
                 },
             )
-            r.raise_for_status()
             data = r.json()
             if total is None:
                 total = data["total"]  # fail loud on schema change
@@ -114,8 +146,9 @@ class WorkdayClient:
                 url=hosted_url,
                 raw=row,
             )
-        r = http.get(f"https://{self.host}/wday/cxs/{self.tenant}/{self.site}{path}")
-        r.raise_for_status()
+        r = _request(
+            http, "GET", f"https://{self.host}/wday/cxs/{self.tenant}/{self.site}{path}"
+        )
         info = r.json()["jobPostingInfo"]  # fail loud on schema change
         return Posting(
             id=path,
