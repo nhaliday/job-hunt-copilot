@@ -47,6 +47,7 @@ uv run python -m job_description_scan --scan scans.acme
 #   --out _output/acme.jsonl                          # default: _output/<scan_tail>.jsonl
 #   --limit 5                                         # smoke test
 #   --concurrency 20                                  # max concurrent LLM calls (default 20)
+#   --no-prefilter                                    # bypass the scan's cheap-model prefilter
 ```
 
 **Point `--resume` at a rendered resume, not a Jinja template.** The pipeline
@@ -95,9 +96,9 @@ LLM, so use them to guide extraction at the field level.
 
 ## Architecture
 
-- **Board fetch**: `boards/<kind>.py` → `Posting` dataclass. No title filtering;
-  every posting flows to the LLM unless excluded by an optional
-  `location_filter` (see below).
+- **Board fetch**: `boards/<kind>.py` → `Posting` dataclass. No deterministic
+  title filtering; every posting flows to the LLM unless excluded by an optional
+  `location_filter` or the optional cheap-model `prefilter` (see below).
 - **LLM pipeline**: `pipeline.py` builds a cached system prompt (instructions +
   schema + reference docs + optional resume), then issues a single composed-
   schema `client.messages.parse(...)` call per posting.
@@ -115,17 +116,36 @@ Per-scan inputs (`config.Scan`):
 - `model`: Anthropic model ID (default `claude-haiku-4-5`)
 - `location_filter`: optional `re.Pattern` applied to `Posting.location` before
   the LLM call. Postings that don't match are skipped entirely (no extraction
-  cost). See `examples/example_scan.py`. Title content is never filtered — only
-  location is, since location is structured metadata while titles encode role
-  nuance worth letting the LLM judge. For the list-then-detail boards
-  (`workday`, `smartrecruiters`) the filter is additionally pushed down into the
-  client to skip per-posting detail GETs; `_filtered` counts are unchanged, and
-  note `--limit` caps LLM calls, not these HTTP fetches. **Workday gotcha**: a
+  cost). See `examples/example_scan.py`. Title content is never filtered
+  deterministically — only location is, since location is structured metadata
+  while titles encode role nuance worth letting a model judge (which is what
+  `prefilter` is for). For the list-then-detail boards (`workday`,
+  `smartrecruiters`) the filter is additionally pushed down into the client to
+  skip per-posting detail GETs; `_filtered` counts are unchanged, and note
+  `--limit` caps LLM calls, not these HTTP fetches. **Workday gotcha**: a
   single-location list row is bare "City, ST" with no country, so a
   country-anchored regex (`United States`) prefilters everything as non-matching
   — write Workday filters against city/state/"Remote" forms. Multi-location rows
   ("2 Locations") are always detail-resolved to the full location set (city +
   country descriptors) before filtering, so they're safe either way.
+- `prefilter`: optional `Prefilter(criterion, model, batch_size, title_precut)`
+  — a cheap-model triage stage between `location_filter` and extraction, for
+  scans over boards where relevant roles are a small minority (a regex can't
+  express "plausibly technical", a cheap model can). Batches of `batch_size`
+  title+location lines (default 40) go to `model` (default `claude-sonnet-4-6`);
+  the case-supplied `criterion` text rides verbatim in the prompt. Postings
+  judged out of scope are dropped before extraction and emitted as `_filtered`
+  audit rows with `_filter_stage: "prefilter"` and the model's one-line
+  `_prefilter_reason` — skim these to validate the criterion. The optional
+  `title_precut` regex drops matching titles first, free
+  (`_filter_stage: "title_precut"`). **Recall-biased and fail-open**: the prompt
+  says keep-on-uncertain, ids are echoed back to detect misalignment, and any
+  failure (batch call error, unechoed id) keeps its postings — a false drop is
+  unrecoverable, a false keep costs one extraction call. Stage order is
+  `location_filter` → `--limit` → `prefilter` → extraction, so `--limit` caps
+  _all_ LLM spend and smoke runs stay cheap. Aggregate triage usage/warnings
+  print at the end of the run (`prefilter:` / `prefilter WARN:` lines);
+  `--no-prefilter` bypasses the stage without editing the scan.
 
 ## Concurrency
 

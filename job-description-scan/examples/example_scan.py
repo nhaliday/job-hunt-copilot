@@ -103,11 +103,26 @@ class Comparison(BaseModel):
 
 
 # Optional deterministic pre-filter on Posting.location (skipped postings cost
-# nothing). Match structured metadata only — never filter on title.
+# nothing). Match structured metadata only — never filter deterministically on
+# title (that's what the cheap-model `prefilter` below is for).
 # Workday caveat: single-location list rows are bare "City, ST" with no country,
 # so a country-anchored regex like this one matches nothing there — write
 # Workday filters against city/state/"Remote" forms (see CLAUDE.md).
 US_LOCATION = re.compile(r"\b(USA?|United States)\b", re.IGNORECASE)
+
+# Optional cheap-model triage before extraction, for boards where relevant
+# roles are a small minority. Batched title+location lines; recall-biased and
+# fail-open; drops appear as `_filtered` audit rows. See CLAUDE.md.
+# from job_description_scan.config import Prefilter
+# PREFILTER = Prefilter(
+#     criterion=(
+#         "Keep any posting that is plausibly a software engineering or "
+#         "hands-on technical customer-facing role. Drop clearly "
+#         "non-technical roles (retail, clinical, HR, quota-carrying sales) "
+#         "and VP-and-above or intern-only postings."
+#     ),
+#     model="claude-sonnet-4-6",
+# )  # then pass prefilter=PREFILTER to Scan(...)
 
 
 scan = Scan(

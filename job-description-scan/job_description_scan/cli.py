@@ -1,7 +1,9 @@
 import argparse
 import asyncio
+import dataclasses
 import importlib
 import sys
+from collections import Counter
 from pathlib import Path
 
 from job_description_scan.boards import make_client
@@ -40,6 +42,11 @@ def main() -> None:
         help="Max concurrent LLM calls (default 20). Lead call runs sequentially "
         "to populate prompt cache; the rest fan out.",
     )
+    ap.add_argument(
+        "--no-prefilter",
+        action="store_true",
+        help="Bypass the scan's cheap-model prefilter stage (if it has one)",
+    )
     args = ap.parse_args()
     asyncio.run(_amain(args))
 
@@ -48,6 +55,8 @@ async def _amain(args: argparse.Namespace) -> None:
     sys.path.insert(0, str(Path.cwd()))
     module = importlib.import_module(args.scan)
     scan: Scan = module.scan
+    if args.no_prefilter and scan.prefilter is not None:
+        scan = dataclasses.replace(scan, prefilter=None)
 
     scan_tail = args.scan.rsplit(".", 1)[-1]
     out_path = args.out or Path("_output") / f"{scan_tail}.jsonl"
@@ -55,7 +64,8 @@ async def _amain(args: argparse.Namespace) -> None:
     client = make_client(scan.source, scan.location_filter)
 
     total_in = total_out = total_cache_read = 0
-    filtered = 0
+    filtered: Counter[str] = Counter()
+    prefilter_stats: dict | None = None
     i = 0
     with JsonlWriter(out_path) as writer:
         async for row in run_scan(
@@ -66,8 +76,11 @@ async def _amain(args: argparse.Namespace) -> None:
             args.limit,
             args.concurrency,
         ):
+            if "_prefilter_stats" in row:
+                prefilter_stats = row["_prefilter_stats"]
+                continue
             if row.get("_filtered"):
-                filtered += 1
+                filtered[row.get("_filter_stage", "location")] += 1
                 continue
             i += 1
             writer.write(row)
@@ -81,8 +94,21 @@ async def _amain(args: argparse.Namespace) -> None:
             total_cache_read += meta.get("cache_read_input_tokens", 0)
 
     print(f"\n→ {out_path} ({writer.count} rows)")
-    if filtered:
-        print(f"filtered: {filtered} postings (location_filter)")
+    for stage, n in filtered.items():
+        print(f"filtered: {n} postings ({stage})")
+    if prefilter_stats:
+        s = prefilter_stats
+        print(
+            f"prefilter: kept {s['kept']} / dropped {s['dropped']} "
+            f"in {s['batches']} batches ({s['model']}); "
+            f"{s['input_tokens']} input + {s['output_tokens']} output "
+            f"+ {s['cache_read_input_tokens']} cache_read tokens"
+        )
+        if s["batch_errors"] or s["unechoed_ids"]:
+            print(
+                f"prefilter WARN: {s['batch_errors']} failed batches, "
+                f"{s['unechoed_ids']} unechoed ids — affected postings kept"
+            )
     print(
         f"usage: {total_in} input + {total_out} output "
         f"+ {total_cache_read} cache_read tokens"
