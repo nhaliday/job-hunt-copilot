@@ -233,20 +233,25 @@ and stays free of any case-specific strings.
 
 Mechanics:
 
-- **Content dedup**: the scan JSONL has no JD body, so the ranker re-fetches the
-  board and joins on `posting.id`. It strips the prefix/suffix shared across the
-  pool (company blurb + EEO/benefits tail) and merges postings whose remaining
-  cores are string-identical — collapsing location-variant clones into one
-  competing entry; the canonical rep carries the member locations/ids. Passing
-  `--dedup-threshold N` additionally merges near-duplicates with `rapidfuzz`
-  `token_set_ratio ≥ N` (e.g. 90). Fuzzy merging is opt-in because it
-  over-merges: distinct roles sharing heavy boilerplate (different teams,
-  Senior/non-Senior variants) can clear the bar — a score of 100 does not even
-  imply identical text (token_set_ratio ignores order/multiplicity and scores
-  near-subsets 100). Every fuzzy merge is logged (`merge: <id> <title> -> ...`);
-  inspect these in `--dry-run` before spending. More clusters → more judge calls
-  (quadratic at round-robin), so fuzzy merging or `--schedule swiss` may still
-  pay on boards with many near-clones.
+- **Content dedup**: the scan JSONL has no JD body, so the ranker re-fetches
+  content from the board and joins on `posting.id`. On list-then-detail boards
+  (`workday`, `smartrecruiters`) it fetches **only the pool's ids** via the
+  client's `fetch_postings` (their posting ids are directly addressable detail
+  paths — a full walk is one GET per posting, 10+ minutes on a ~2k board with no
+  location_filter pushdown); one-shot boards do the cheap full fetch. Postings
+  delisted since the scan surface as `dropped` either way. It then strips the
+  prefix/suffix shared across the pool (company blurb + EEO/benefits tail) and
+  merges postings whose remaining cores are string-identical — collapsing
+  location-variant clones into one competing entry; the canonical rep carries
+  the member locations/ids. Passing `--dedup-threshold N` additionally merges
+  near-duplicates with `rapidfuzz` `token_set_ratio ≥ N` (e.g. 90). Fuzzy
+  merging is opt-in because it over-merges: distinct roles sharing heavy
+  boilerplate (different teams, Senior/non-Senior variants) can clear the bar —
+  a score of 100 does not even imply identical text (token_set_ratio ignores
+  order/multiplicity and scores near-subsets 100). Every fuzzy merge is logged
+  (`merge: <id> <title> -> ...`); inspect these in `--dry-run` before spending.
+  More clusters → more judge calls (quadratic at round-robin), so fuzzy merging
+  or `--schedule swiss` may still pay on boards with many near-clones.
 - **Judge**: each pair is compared twice with A/B **swapped** (position-bias
   mitigation; `--no-order-swap` to halve cost). Consistent winner → one edge;
   disagreement → a tie (one edge each direction, which `choix` handles). The

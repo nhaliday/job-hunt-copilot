@@ -460,16 +460,29 @@ def main() -> None:
     args = ap.parse_args()
 
     scan, ladders = _load_ladders(args.scan, args.ladder)
-    board = {
-        p.id: p
-        for p in make_client(scan.source, scan.location_filter).iter_postings()
-    }
+    selected = [(ladder, select_rows(args.results, ladder)) for ladder in ladders]
+    # Fetch only the pool's ids where the client supports it (list-then-detail
+    # boards, where a full walk is one GET per posting — 10+ min on a ~2k
+    # board). One-shot clients have no fetch_postings and walk as before.
+    needed = sorted({r["posting"]["id"] for _, rows in selected for r in rows})
+    client = make_client(scan.source, scan.location_filter)
+    fetch = getattr(client, "fetch_postings", None)
+    if not needed:
+        board: dict[str, Posting] = {}
+    elif fetch is not None:
+        board = {p.id: p for p in fetch(needed)}
+        print(
+            f"content join: fetched {len(board)}/{len(needed)} postings by id",
+            flush=True,
+        )
+    else:
+        board = {p.id: p for p in client.iter_postings()}
+        print(f"content join: full board walk ({len(board)} postings)", flush=True)
     scan_tail = args.scan.rsplit(".", 1)[-1]
     resume_text = args.resume.read_text(encoding="utf-8") if args.resume else ""
 
-    for ladder in ladders:
+    for ladder, rows in selected:
         role_key = "_".join(ladder.roles)
-        rows = select_rows(args.results, ladder)
         joined, dropped = join_content(rows, board)
         cands = dedupe(joined, args.dedup_threshold)
         n = len(cands)

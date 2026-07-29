@@ -54,6 +54,21 @@ class SmartRecruitersClient:
             for row in self._list_rows(http, base):
                 yield self._posting(http, base, row)
 
+    def fetch_postings(self, ids: Iterable[str]) -> Iterable[Posting]:
+        """Targeted detail fetches by posting id. Lets the ranking join skip
+        the full board walk. Delisted ids (404) are skipped loudly; the caller
+        sees them as missing and reports them dropped."""
+        base = f"https://api.smartrecruiters.com/v1/companies/{self.slug}/postings"
+        with httpx.Client(timeout=30) as http:
+            for pid in ids:
+                try:
+                    yield self._detail_posting(http, base, pid, row=None)
+                except httpx.HTTPError as e:
+                    print(
+                        f"  smartrecruiters: skipping {pid}: "
+                        f"{type(e).__name__}: {e}"
+                    )
+
     def _list_rows(self, http: httpx.Client, base: str) -> list[dict]:
         # Materialize before detail fetches (see workday.py: offset pagination
         # over a churning board skips/duplicates rows at page boundaries).
@@ -93,13 +108,20 @@ class SmartRecruitersClient:
                 url=f"https://jobs.smartrecruiters.com/{self.slug}/{pid}",
                 raw=row,
             )
+        return self._detail_posting(http, base, pid, row)
+
+    def _detail_posting(
+        self, http: httpx.Client, base: str, pid: str, row: dict | None
+    ) -> Posting:
         r = http.get(f"{base}/{pid}")
         r.raise_for_status()
         detail = r.json()
         return Posting(
             id=pid,
-            title=detail.get("name") or row.get("name", ""),
-            location=loc,
+            # The detail response carries the same location object as list
+            # rows, so a targeted fetch (no list row) still gets a location.
+            title=detail.get("name") or (row or {}).get("name", ""),
+            location=_location(row if row is not None else detail),
             content_text=_full_text(detail["jobAd"]),  # fail loud on schema change
             url=detail.get("postingUrl", ""),
             raw=detail,

@@ -78,6 +78,20 @@ class WorkdayClient:
                         f"{type(e).__name__}: {e}"
                     )
 
+    def fetch_postings(self, ids: Iterable[str]) -> Iterable[Posting]:
+        """Targeted detail fetches — ids are externalPaths. Lets the ranking
+        join skip the full board walk, which detail-fetches every posting when
+        the scan has no location_filter. Delisted ids (404) are skipped loudly;
+        the caller sees them as missing and reports them dropped."""
+        with httpx.Client(timeout=30) as http:
+            for path in ids:
+                try:
+                    yield self._detail_posting(http, path, row=None)
+                except httpx.HTTPError as e:
+                    print(
+                        f"  workday: skipping {path}: {type(e).__name__}: {e}"
+                    )
+
     def _list_rows(self, http: httpx.Client) -> list[dict]:
         # Materialize the whole list before any detail fetch: offset pagination
         # over a live board can skip or duplicate rows at page boundaries when
@@ -146,15 +160,21 @@ class WorkdayClient:
                 url=hosted_url,
                 raw=row,
             )
+        return self._detail_posting(http, path, row)
+
+    def _detail_posting(
+        self, http: httpx.Client, path: str, row: dict | None
+    ) -> Posting:
         r = _request(
             http, "GET", f"https://{self.host}/wday/cxs/{self.tenant}/{self.site}{path}"
         )
         info = r.json()["jobPostingInfo"]  # fail loud on schema change
         return Posting(
             id=path,
-            title=info.get("title") or row.get("title", ""),
+            title=info.get("title") or (row or {}).get("title", ""),
             location=_enriched_location(info),
             content_text=strip_html(info.get("jobDescription") or ""),
-            url=info.get("externalUrl") or hosted_url,
+            url=info.get("externalUrl")
+            or f"https://{self.host}/{self.site}{path}",
             raw=info,
         )
