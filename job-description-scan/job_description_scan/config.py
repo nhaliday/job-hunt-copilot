@@ -5,7 +5,9 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-BoardKind = Literal["greenhouse", "ashby", "lever", "workday", "smartrecruiters"]
+BoardKind = Literal[
+    "greenhouse", "ashby", "lever", "workday", "smartrecruiters", "phenom"
+]
 
 
 @dataclass(frozen=True)

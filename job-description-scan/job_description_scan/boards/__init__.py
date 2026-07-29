@@ -52,6 +52,7 @@ def make_client(
     from .ashby import AshbyClient
     from .greenhouse import GreenhouseClient
     from .lever import LeverClient
+    from .phenom import PhenomClient
     from .smartrecruiters import SmartRecruitersClient
     from .workday import WorkdayClient
 
@@ -69,4 +70,6 @@ def make_client(
         return WorkdayClient(source.slug, location_filter)
     if source.kind == "smartrecruiters":
         return SmartRecruitersClient(source.slug, location_filter)
+    if source.kind == "phenom":
+        return PhenomClient(source.slug, location_filter)
     raise ValueError(f"Unknown board kind: {source.kind!r}")

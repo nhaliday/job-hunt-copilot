@@ -51,7 +51,7 @@ from job_description_scan.ranking import (
     select_rows,
 )
 
-SCANNABLE = ("greenhouse", "ashby", "lever", "workday", "smartrecruiters")
+SCANNABLE = ("greenhouse", "ashby", "lever", "workday", "smartrecruiters", "phenom")
 
 # Ladder pools above this many clusters rank with the cheaper swiss schedule
 # instead of round-robin (which is quadratic in judge calls).

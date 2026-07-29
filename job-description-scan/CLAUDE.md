@@ -65,14 +65,20 @@ resume.
 2. Edit the `Extraction` and (optional) `Comparison` Pydantic classes to match
    the role family you want to characterize
 3. Edit the `scan = Scan(...)` block: source board (`greenhouse`, `ashby`,
-   `lever`, `workday`, or `smartrecruiters` — all five implemented), slug,
-   model. Slug formats: the big three use the board's URL slug; `workday` uses
-   `"hostprefix/site"` (e.g. `"acme.wd5/Acme_Careers"`; a hostprefix containing
-   `.myworkday` is taken as a full host, covering `myworkdaysite.com` tenants);
-   `smartrecruiters` uses the API company identifier, which sometimes differs
-   from the careers-site slug — a wrong identifier returns `totalFound: 0` and
-   the client raises on it, so verify with
-   `curl https://api.smartrecruiters.com/v1/companies/<id>/postings` first
+   `lever`, `workday`, `smartrecruiters`, or `phenom` — all six implemented),
+   slug, model. Slug formats: the big three use the board's URL slug; `workday`
+   uses `"hostprefix/site"` (e.g. `"acme.wd5/Acme_Careers"`; a hostprefix
+   containing `.myworkday` is taken as a full host, covering `myworkdaysite.com`
+   tenants); `smartrecruiters` uses the API company identifier, which sometimes
+   differs from the careers-site slug — a wrong identifier returns
+   `totalFound: 0` and the client raises on it, so verify with
+   `curl https://api.smartrecruiters.com/v1/companies/<id>/postings` first;
+   `phenom` uses the branded careers-site host (e.g. `"careers.acme.org"` —
+   verify it's really Phenom with
+   `curl -X POST https://<host>/widgets -H 'Content-Type: application/json' -d '{"ddoKey":"refineSearch","from":0,"size":1,"jobs":true}'`;
+   the client raises on 0 postings). Phenom fronts a separate ATS, so a company
+   may have e.g. a Workday tenant whose own listing surface is empty while the
+   Phenom site carries the real board
 4. Run: `uv run python -m job_description_scan --scan scans.<name>`
 
 Pydantic `Field(description=...)` strings flow into the JSON schema sent to the
@@ -120,9 +126,9 @@ Per-scan inputs (`config.Scan`):
   deterministically — only location is, since location is structured metadata
   while titles encode role nuance worth letting a model judge (which is what
   `prefilter` is for). For the list-then-detail boards (`workday`,
-  `smartrecruiters`) the filter is additionally pushed down into the client to
-  skip per-posting detail GETs; `_filtered` counts are unchanged, and note
-  `--limit` caps LLM calls, not these HTTP fetches. **Workday gotcha**: a
+  `smartrecruiters`, `phenom`) the filter is additionally pushed down into the
+  client to skip per-posting detail GETs; `_filtered` counts are unchanged, and
+  note `--limit` caps LLM calls, not these HTTP fetches. **Workday gotcha**: a
   single-location list row is bare "City, ST" with no country, so a
   country-anchored regex (`United States`) prefilters everything as non-matching
   — write Workday filters against city/state/"Remote" forms. Multi-location rows
@@ -235,16 +241,16 @@ Mechanics:
 
 - **Content dedup**: the scan JSONL has no JD body, so the ranker re-fetches
   content from the board and joins on `posting.id`. On list-then-detail boards
-  (`workday`, `smartrecruiters`) it fetches **only the pool's ids** via the
-  client's `fetch_postings` (their posting ids are directly addressable detail
-  paths — a full walk is one GET per posting, 10+ minutes on a ~2k board with no
-  location_filter pushdown); one-shot boards do the cheap full fetch. Postings
-  delisted since the scan surface as `dropped` either way. It then strips the
-  prefix/suffix shared across the pool (company blurb + EEO/benefits tail) and
-  merges postings whose remaining cores are string-identical — collapsing
-  location-variant clones into one competing entry; the canonical rep carries
-  the member locations/ids. Passing `--dedup-threshold N` additionally merges
-  near-duplicates with `rapidfuzz` `token_set_ratio ≥ N` (e.g. 90). Fuzzy
+  (`workday`, `smartrecruiters`, `phenom`) it fetches **only the pool's ids**
+  via the client's `fetch_postings` (their posting ids are directly addressable
+  detail paths — a full walk is one GET per posting, 10+ minutes on a ~2k board
+  with no location_filter pushdown); one-shot boards do the cheap full fetch.
+  Postings delisted since the scan surface as `dropped` either way. It then
+  strips the prefix/suffix shared across the pool (company blurb + EEO/benefits
+  tail) and merges postings whose remaining cores are string-identical —
+  collapsing location-variant clones into one competing entry; the canonical rep
+  carries the member locations/ids. Passing `--dedup-threshold N` additionally
+  merges near-duplicates with `rapidfuzz` `token_set_ratio ≥ N` (e.g. 90). Fuzzy
   merging is opt-in because it over-merges: distinct roles sharing heavy
   boilerplate (different teams, Senior/non-Senior variants) can clear the bar —
   a score of 100 does not even imply identical text (token_set_ratio ignores
