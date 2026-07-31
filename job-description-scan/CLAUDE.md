@@ -268,7 +268,11 @@ Mechanics:
   mitigation; `--no-order-swap` to halve cost). Consistent winner → one edge;
   disagreement → a tie (one edge each direction, which `choix` handles). The
   resume + role label form a cached system prefix (same lead-then-fan-out +
-  caching as the scan pipeline, reused from `pipeline.py`).
+  caching as the scan pipeline, reused from `pipeline.py`). The judge is
+  **injectable**: `run_ladder(..., judge=)` takes any
+  `async (Candidate, Candidate) -> "A" | "B"` — the LLM judge is just the
+  default; the tests inject a seeded rng judge, and a human judge (terminal
+  prompts) can reuse the whole tournament unchanged.
 - **Schedule**: `round-robin` (default) compares all pairs; `swiss`
   (`--schedule swiss`, `--rounds N`) is cheaper and concentrates comparisons
   near the top for large pools.
@@ -280,3 +284,11 @@ Mechanics:
 clusters → ~90 calls), but a ~22-cluster pool is ~460 calls. Always `--dry-run`
 first; drop to `--no-order-swap` or `--schedule swiss` if that's hotter than you
 want.
+
+## Tests
+
+`uv run pytest` from this directory (pytest comes from the `dev` dependency
+group; `uv sync` installs it). Hermetic — no network, no LLM spend: the
+tournament tests drive `run_ladder` end-to-end with injected seeded-rng judges
+carrying a planted ground truth (`tests/test_ranking.py`). Run before any
+`tools/` pin bump in the content project.

@@ -11,6 +11,9 @@ dependencies = [
     "rapidfuzz>=3.14.5",
 ]
 
+[dependency-groups]
+dev = ["pytest>=8"]
+
 # Installable as a dependency (e.g. a content repo pinning this engine via a
 # path/git source); scan configs stay outside the package and are imported
 # from the caller's cwd.

@@ -21,7 +21,7 @@ import random
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import Awaitable, Callable, Literal
 
 import anthropic
 import choix
@@ -62,6 +62,14 @@ class Candidate:
     locations: list[str] = field(default_factory=list)
     posting_ids: list[str] = field(default_factory=list)
     titles: list[str] = field(default_factory=list)
+
+
+# The tournament's only contract with a judge: given two candidates in a fixed
+# presentation order, which wins? The LLM judge is one implementation
+# (_llm_judge); tests inject a seeded rng judge, and the roadmap's human-judge
+# ranking will inject a terminal prompt. Orientation (order-swap) is expressed
+# by argument order, so judges stay oblivious to it.
+Judge = Callable[["Candidate", "Candidate"], Awaitable[Literal["A", "B"]]]
 
 
 # --------------------------------------------------------------------------- #
@@ -223,30 +231,25 @@ def _user_content(a: Candidate, b: Candidate) -> str:
     return block("A", a) + "\n\n" + block("B", b)
 
 
-async def _judge_call(
+def _llm_judge(
     anth: anthropic.AsyncAnthropic,
     model: str,
     system_blocks: list[dict],
-    cands: list[Candidate],
-    a_idx: int,
-    b_idx: int,
-) -> dict:
-    """One directed comparison: candidate a_idx as 'A', b_idx as 'B'.
-    Returns {a, b, winner} where winner is a global index or None on failure."""
-    try:
+) -> Judge:
+    """The default Judge. All LLM specifics live here; it knows nothing about
+    indices, schedules, or error rows."""
+
+    async def judge(a: Candidate, b: Candidate) -> Literal["A", "B"]:
         resp = await anth.messages.parse(
             model=model,
             max_tokens=12000,
             system=system_blocks,
-            messages=[
-                {"role": "user", "content": _user_content(cands[a_idx], cands[b_idx])}
-            ],
+            messages=[{"role": "user", "content": _user_content(a, b)}],
             output_format=Verdict,
         )
-        winner = a_idx if resp.parsed_output.winner == "A" else b_idx
-        return {"a": a_idx, "b": b_idx, "winner": winner}
-    except Exception as e:
-        return {"a": a_idx, "b": b_idx, "winner": None, "error": f"{type(e).__name__}: {e}"}
+        return resp.parsed_output.winner
+
+    return judge
 
 
 # --------------------------------------------------------------------------- #
@@ -266,10 +269,19 @@ def _directed(matchups: list[tuple[int, int]], order_swap: bool, rng: random.Ran
 
 
 async def _run_comparisons(
-    anth, model, system_blocks, cands, directed, concurrency
+    judge: Judge, cands: list[Candidate], directed, concurrency
 ) -> list[dict]:
+    """Tournament semantics around the judge: A/B → global index, and any
+    judge failure → {winner: None, error} (the row _resolve skips and
+    _report_errors surfaces)."""
+
     async def call(pair: tuple[int, int]) -> dict:
-        return await _judge_call(anth, model, system_blocks, cands, pair[0], pair[1])
+        i, j = pair
+        try:
+            winner = i if await judge(cands[i], cands[j]) == "A" else j
+            return {"a": i, "b": j, "winner": winner}
+        except Exception as e:
+            return {"a": i, "b": j, "winner": None, "error": f"{type(e).__name__}: {e}"}
 
     return [row async for row in lead_then_fanout(directed, call, concurrency)]
 
@@ -353,12 +365,19 @@ async def run_ladder(
     order_swap: bool,
     concurrency: int,
     seed: int = 0,
+    *,
+    judge: Judge | None = None,
 ) -> list[dict]:
     n = len(cands)
     rng = random.Random(seed)
-    system_blocks = _system_prefix(resume_text, label)
-    anth = anthropic.AsyncAnthropic(max_retries=8)
     results: list[dict] = []
+
+    # Default judge is the LLM (resume_text/label/model are its inputs); an
+    # injected judge makes those parameters inert and needs no client.
+    anth = None
+    if judge is None:
+        anth = anthropic.AsyncAnthropic(max_retries=8)
+        judge = _llm_judge(anth, model, _system_prefix(resume_text, label))
 
     # Close the client before the caller's event loop does — otherwise its
     # pooled connections get finalized after asyncio.run() tears the loop
@@ -368,9 +387,7 @@ async def run_ladder(
             directed = _directed(
                 list(itertools.combinations(range(n), 2)), order_swap, rng
             )
-            results = await _run_comparisons(
-                anth, model, system_blocks, cands, directed, concurrency
-            )
+            results = await _run_comparisons(judge, cands, directed, concurrency)
         else:  # swiss
             played: set[frozenset] = set()
             score = [0.0] * n
@@ -391,14 +408,15 @@ async def run_ladder(
                     break
                 directed = _directed(matchups, order_swap, rng)
                 round_results = await _run_comparisons(
-                    anth, model, system_blocks, cands, directed, concurrency
+                    judge, cands, directed, concurrency
                 )
                 results.extend(round_results)
                 for r in round_results:  # update standings for next pairing
                     if r["winner"] is not None:
                         score[r["winner"]] += 1.0
     finally:
-        await anth.close()
+        if anth is not None:
+            await anth.close()
 
     _report_errors(results)
     return rank(cands, results)
