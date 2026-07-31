@@ -53,9 +53,11 @@ class PhenomClient:
             for row in self._list_rows(http):
                 try:
                     yield self._posting(http, row)
-                except httpx.HTTPError as e:
+                except (httpx.HTTPError, KeyError) as e:
                     # Persistent failure on ONE detail call — skip the posting
-                    # loudly rather than abort the board.
+                    # loudly rather than abort the board. KeyError matches
+                    # fetch_postings: a posting delisted mid-walk answers 200
+                    # with jobDetail.data.job absent, not an HTTP error.
                     print(
                         f"  phenom: skipping {row.get('jobId')}: "
                         f"{type(e).__name__}: {e}"

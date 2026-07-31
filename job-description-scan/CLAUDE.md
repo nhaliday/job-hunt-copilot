@@ -287,8 +287,13 @@ want.
 
 ## Tests
 
-`uv run pytest` from this directory (pytest comes from the `dev` dependency
-group; `uv sync` installs it). Hermetic — no network, no LLM spend: the
-tournament tests drive `run_ladder` end-to-end with injected seeded-rng judges
-carrying a planted ground truth (`tests/test_ranking.py`). Run before any
-`tools/` pin bump in the content project.
+`uv run pytest` from this directory (pytest + respx come from the `dev`
+dependency group; `uv sync` installs them). Hermetic — no network, no LLM spend:
+the tournament tests drive `run_ladder` end-to-end with injected seeded-rng
+judges carrying a planted ground truth (`tests/test_ranking.py`), and the board
+clients replay synthetic recorded-shape fixtures through respx
+(`tests/test_boards_*.py`) — including the edges live APIs can't serve on
+demand: delisted postings (404s, phenom's 200-with-missing-"job"), empty-board
+fail-loud sentinels, pagination termination/dedupe, transient-error retry, and
+location_filter pushdown (no detail request for non-matching rows). Run before
+any `tools/` pin bump in the content project.
