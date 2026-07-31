@@ -2,7 +2,7 @@ from typing import Iterable
 
 import httpx
 
-from job_description_scan.boards import Posting, strip_html
+from job_description_scan.boards import Posting, fetch_by_walk, strip_html
 
 
 def _full_text(job: dict) -> str:
@@ -49,3 +49,6 @@ class LeverClient:
                 url=job.get("hostedUrl", ""),
                 raw=job,
             )
+
+    def fetch_postings(self, ids: Iterable[str]) -> Iterable[Posting]:
+        return fetch_by_walk(self, ids)

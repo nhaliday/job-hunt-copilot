@@ -20,6 +20,17 @@ class Posting:
 class BoardClient(Protocol):
     def iter_postings(self) -> Iterable[Posting]: ...
 
+    def fetch_postings(self, ids: Iterable[str]) -> Iterable[Posting]: ...
+
+
+def fetch_by_walk(client: BoardClient, ids: Iterable[str]) -> Iterable[Posting]:
+    """Derived fetch_postings for one-shot boards: the full listing arrives in
+    one or a few requests, so a targeted fetch is just a filtered walk. Ids
+    delisted since the scan simply don't appear; the caller sees them as
+    missing and reports them dropped."""
+    wanted = set(ids)
+    return (p for p in client.iter_postings() if p.id in wanted)
+
 
 class _Stripper(HTMLParser):
     def __init__(self) -> None:

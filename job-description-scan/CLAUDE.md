@@ -87,7 +87,12 @@ LLM, so use them to guide extraction at the field level.
 ## Adding a new board
 
 1. Create `job_description_scan/boards/<name>.py` with a class implementing the
-   `BoardClient` protocol — single method `iter_postings() -> Iterable[Posting]`
+   `BoardClient` protocol — `iter_postings() -> Iterable[Posting]` plus
+   `fetch_postings(ids) -> Iterable[Posting]` (the ranking join's targeted
+   re-fetch). One-shot boards implement the latter as a one-line delegation to
+   `fetch_by_walk` (a filtered full walk — the listing is one cheap request);
+   list-then-detail boards do one detail GET per id, skipping delisted ids
+   loudly (see `boards/workday.py`)
 2. Register the class in `boards/__init__.py`'s `make_client` factory and add
    the kind to the `BoardKind` Literal in `config.py`
 3. Map the URL pattern and response shape to
@@ -240,17 +245,18 @@ and stays free of any case-specific strings.
 Mechanics:
 
 - **Content dedup**: the scan JSONL has no JD body, so the ranker re-fetches
-  content from the board and joins on `posting.id`. On list-then-detail boards
-  (`workday`, `smartrecruiters`, `phenom`) it fetches **only the pool's ids**
-  via the client's `fetch_postings` (their posting ids are directly addressable
-  detail paths — a full walk is one GET per posting, 10+ minutes on a ~2k board
-  with no location_filter pushdown); one-shot boards do the cheap full fetch.
-  Postings delisted since the scan surface as `dropped` either way. It then
-  strips the prefix/suffix shared across the pool (company blurb + EEO/benefits
-  tail) and merges postings whose remaining cores are string-identical —
-  collapsing location-variant clones into one competing entry; the canonical rep
-  carries the member locations/ids. Passing `--dedup-threshold N` additionally
-  merges near-duplicates with `rapidfuzz` `token_set_ratio ≥ N` (e.g. 90). Fuzzy
+  content via `client.fetch_postings(<pool ids>)` and joins on `posting.id`.
+  Every client implements the method: list-then-detail boards (`workday`,
+  `smartrecruiters`, `phenom`) do targeted detail GETs (their posting ids are
+  directly addressable detail paths — a full walk is one GET per posting, 10+
+  minutes on a ~2k board with no location_filter pushdown); one-shot boards
+  derive it from the cheap full walk (`fetch_by_walk`). Postings delisted since
+  the scan surface as `dropped` either way. It then strips the prefix/suffix
+  shared across the pool (company blurb + EEO/benefits tail) and merges postings
+  whose remaining cores are string-identical — collapsing location-variant
+  clones into one competing entry; the canonical rep carries the member
+  locations/ids. Passing `--dedup-threshold N` additionally merges
+  near-duplicates with `rapidfuzz` `token_set_ratio ≥ N` (e.g. 90). Fuzzy
   merging is opt-in because it over-merges: distinct roles sharing heavy
   boilerplate (different teams, Senior/non-Senior variants) can clear the bar —
   a score of 100 does not even imply identical text (token_set_ratio ignores

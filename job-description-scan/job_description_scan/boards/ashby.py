@@ -2,7 +2,7 @@ from typing import Iterable
 
 import httpx
 
-from job_description_scan.boards import Posting
+from job_description_scan.boards import Posting, fetch_by_walk
 
 
 def _enriched_location(job: dict) -> str:
@@ -46,3 +46,6 @@ class AshbyClient:
                 url=job.get("jobUrl", ""),
                 raw=job,
             )
+
+    def fetch_postings(self, ids: Iterable[str]) -> Iterable[Posting]:
+        return fetch_by_walk(self, ids)

@@ -136,6 +136,12 @@ class _CachingClient:
             self.postings = list(self._inner.iter_postings())
         return {p.id: p for p in self.postings}
 
+    def fetch_postings(self, ids) -> list[Posting]:
+        # Satisfies the widened BoardClient protocol; served from the cache
+        # (the driver's own ranking join uses index() directly).
+        wanted = set(ids)
+        return [p for p in self.index().values() if p.id in wanted]
+
 
 async def _scan_board(
     board: Board,

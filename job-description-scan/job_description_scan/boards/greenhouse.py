@@ -2,7 +2,7 @@ from typing import Iterable
 
 import httpx
 
-from job_description_scan.boards import Posting, strip_html
+from job_description_scan.boards import Posting, fetch_by_walk, strip_html
 
 
 def _enriched_location(job: dict) -> str:
@@ -39,3 +39,6 @@ class GreenhouseClient:
                 url=job.get("absolute_url", ""),
                 raw=job,
             )
+
+    def fetch_postings(self, ids: Iterable[str]) -> Iterable[Posting]:
+        return fetch_by_walk(self, ids)
