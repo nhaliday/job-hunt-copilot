@@ -14,6 +14,10 @@ dependencies = [
 [dependency-groups]
 dev = ["pytest>=8", "respx>=0.22"]
 
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+
 # Installable as a dependency (e.g. a content repo pinning this engine via a
 # path/git source); scan configs stay outside the package and are imported
 # from the caller's cwd.

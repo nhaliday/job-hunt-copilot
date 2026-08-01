@@ -8,3 +8,7 @@ dependencies = [
     "pdfplumber>=0.11.9",
     "weasyprint>=68.1",
 ]
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
