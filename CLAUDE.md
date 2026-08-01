@@ -31,3 +31,9 @@ Keep the boundary absolute: no committed file here may contain personal data —
 names, contact info, employers, target companies (except as neutral examples),
 resume text, or fit assessments. Docs and code use placeholder examples
 (`Jane Doe`, `scans.acme`).
+
+## Formatting
+
+Python is ruff-formatted: `uvx ruff format .` from the repo root. A pre-commit
+gate runs `ruff format --check` — activate once per clone with
+`git config core.hooksPath githooks`.
