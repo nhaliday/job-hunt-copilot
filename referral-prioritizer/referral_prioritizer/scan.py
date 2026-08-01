@@ -452,7 +452,7 @@ def main() -> None:
     ap.add_argument("--board-concurrency", type=int, default=4)
     ap.add_argument("--concurrency", type=int, default=8, help="LLM calls per board")
     ap.add_argument("--model", help="override the factory's extraction model")
-    ap.add_argument("--judge-model", default="claude-opus-4-8")
+    ap.add_argument("--judge-model", default="claude-opus-5")
     ap.add_argument("--limit", type=int, help="postings per board (smoke tests)")
     ap.add_argument("--skip-rank", action="store_true")
     ap.add_argument("--order-swap", action=argparse.BooleanOptionalAction, default=True)

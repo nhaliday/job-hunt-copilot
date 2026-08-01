@@ -65,8 +65,8 @@ pipeline is built in reviewable stages; implemented so far:
    in-process so ranking's content join doesn't re-fetch. `summary.csv` is
    rebuilt from disk artifacts every run, so resumed or `--only`-filtered runs
    stay coherent. Flags: `--only <substr>`, `--limit N` (smoke), `--model`,
-   `--judge-model` (default `claude-opus-4-8`), `--skip-rank`,
-   `--no-order-swap`, `--dry-run` (counts + cost estimate, no spend or HTTP).
+   `--judge-model` (default `claude-opus-5`), `--skip-rank`, `--no-order-swap`,
+   `--dry-run` (counts + cost estimate, no spend or HTTP).
 
 Known limitation: a probe-accepted board can be genuine but _secondary_ (a
 sub-org or test board on one ATS while the main careers system lives elsewhere).

@@ -478,7 +478,7 @@ def main() -> None:
         "non-identical cores (e.g. 90). Default: only string-identical "
         "cores merge.",
     )
-    ap.add_argument("--judge-model", default="claude-fable-5")
+    ap.add_argument("--judge-model", default="claude-opus-5")
     ap.add_argument("--order-swap", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument("--concurrency", type=int, default=20)
     ap.add_argument("--dry-run", action="store_true", help="print counts, no API spend")

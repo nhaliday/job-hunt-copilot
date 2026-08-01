@@ -237,7 +237,7 @@ uv run python -m job_description_scan.ranking \
 … --ladder post_sales_se
 #   --ladder all            # every ladder in the scan's RankConfig
 #   --no-order-swap         # halve calls (drops position-bias mitigation)
-#   --judge-model …         # default claude-fable-5
+#   --judge-model …         # default claude-opus-5; override for pricier tiers
 #   --dedup-threshold 90    # opt into fuzzy dedup merging (see Mechanics);
 #                           # default: only string-identical cores merge
 ```
