@@ -23,13 +23,23 @@ from pathlib import Path
 import httpx
 
 from job_description_scan.boards import make_client
+from job_description_scan.boards.eightfold import EightfoldClient
+from job_description_scan.boards.eightfold import _locations as ef_locations
 from job_description_scan.boards.phenom import PhenomClient
 from job_description_scan.boards.phenom import _locations as ph_locations
 from job_description_scan.boards.smartrecruiters import _location as sr_location
 from job_description_scan.boards.workday import _enriched_location
 from job_description_scan.config import BoardSource
 
-SCANNABLE = ("greenhouse", "ashby", "lever", "workday", "smartrecruiters", "phenom")
+SCANNABLE = (
+    "greenhouse",
+    "ashby",
+    "lever",
+    "workday",
+    "smartrecruiters",
+    "phenom",
+    "eightfold",
+)
 
 # Case defaults live with the caller via flags; these mirror a US+Canada scope.
 DEFAULT_FILTER = r"\b(USA?|United States|Canada)\b"
@@ -145,6 +155,13 @@ def _count_phenom(http: httpx.Client, slug: str, pattern: re.Pattern) -> int:
     return sum(1 for row in rows if pattern.search(ph_locations(row)))
 
 
+def _count_eightfold(http: httpx.Client, slug: str, pattern: re.Pattern) -> int:
+    # List rows carry country-qualified "City, ST, US" strings — same
+    # list-level shortcut as phenom.
+    rows = EightfoldClient(slug)._list_rows(http)
+    return sum(1 for row in rows if pattern.search(ef_locations(row)))
+
+
 def count_located(
     http: httpx.Client,
     kind: str,
@@ -158,6 +175,8 @@ def count_located(
         return _count_smartrecruiters(http, slug, pattern)
     if kind == "phenom":
         return _count_phenom(http, slug, pattern)
+    if kind == "eightfold":
+        return _count_eightfold(http, slug, pattern)
     client = make_client(BoardSource(kind=kind, slug=slug))
     return sum(1 for p in client.iter_postings() if pattern.search(p.location))
 

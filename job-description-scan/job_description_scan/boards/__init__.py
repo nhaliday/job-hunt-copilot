@@ -61,6 +61,7 @@ def make_client(
     source: BoardSource, location_filter: re.Pattern[str] | None = None
 ) -> BoardClient:
     from .ashby import AshbyClient
+    from .eightfold import EightfoldClient
     from .greenhouse import GreenhouseClient
     from .lever import LeverClient
     from .phenom import PhenomClient
@@ -83,4 +84,6 @@ def make_client(
         return SmartRecruitersClient(source.slug, location_filter)
     if source.kind == "phenom":
         return PhenomClient(source.slug, location_filter)
+    if source.kind == "eightfold":
+        return EightfoldClient(source.slug, location_filter)
     raise ValueError(f"Unknown board kind: {source.kind!r}")

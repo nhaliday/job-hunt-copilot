@@ -6,7 +6,13 @@ from typing import Literal
 from pydantic import BaseModel
 
 BoardKind = Literal[
-    "greenhouse", "ashby", "lever", "workday", "smartrecruiters", "phenom"
+    "greenhouse",
+    "ashby",
+    "lever",
+    "workday",
+    "smartrecruiters",
+    "phenom",
+    "eightfold",
 ]
 
 

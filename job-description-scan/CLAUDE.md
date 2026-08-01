@@ -65,20 +65,26 @@ resume.
 2. Edit the `Extraction` and (optional) `Comparison` Pydantic classes to match
    the role family you want to characterize
 3. Edit the `scan = Scan(...)` block: source board (`greenhouse`, `ashby`,
-   `lever`, `workday`, `smartrecruiters`, or `phenom` — all six implemented),
-   slug, model. Slug formats: the big three use the board's URL slug; `workday`
-   uses `"hostprefix/site"` (e.g. `"acme.wd5/Acme_Careers"`; a hostprefix
-   containing `.myworkday` is taken as a full host, covering `myworkdaysite.com`
-   tenants); `smartrecruiters` uses the API company identifier, which sometimes
-   differs from the careers-site slug — a wrong identifier returns
-   `totalFound: 0` and the client raises on it, so verify with
-   `curl https://api.smartrecruiters.com/v1/companies/<id>/postings` first;
+   `lever`, `workday`, `smartrecruiters`, `phenom`, or `eightfold` — all seven
+   implemented), slug, model. Slug formats: the big three use the board's URL
+   slug; `workday` uses `"hostprefix/site"` (e.g. `"acme.wd5/Acme_Careers"`; a
+   hostprefix containing `.myworkday` is taken as a full host, covering
+   `myworkdaysite.com` tenants); `smartrecruiters` uses the API company
+   identifier, which sometimes differs from the careers-site slug — a wrong
+   identifier returns `totalFound: 0` and the client raises on it, so verify
+   with `curl https://api.smartrecruiters.com/v1/companies/<id>/postings` first;
    `phenom` uses the branded careers-site host (e.g. `"careers.acme.org"` —
    verify it's really Phenom with
    `curl -X POST https://<host>/widgets -H 'Content-Type: application/json' -d '{"ddoKey":"refineSearch","from":0,"size":1,"jobs":true}'`;
-   the client raises on 0 postings). Phenom fronts a separate ATS, so a company
-   may have e.g. a Workday tenant whose own listing surface is empty while the
-   Phenom site carries the real board
+   the client raises on 0 postings); `eightfold` uses `"host/domain"` (e.g.
+   `"searchcareers.acme.com/acme.com"` — the careers host plus the `domain`
+   query param from the site's own config; verify with
+   `curl "https://<host>/api/pcsx/search?domain=<domain>&start=0"`; the client
+   raises on 0 postings, and the classic `/api/apply/v2/jobs` endpoint answering
+   "Not authorized for PCSX" is expected on these deployments). Phenom and
+   Eightfold front a separate ATS, so a company may have e.g. a Workday tenant
+   whose own listing surface is empty while the branded site carries the real
+   board
 4. Run: `uv run python -m job_description_scan --scan scans.<name>`
 
 Pydantic `Field(description=...)` strings flow into the JSON schema sent to the
@@ -131,14 +137,15 @@ Per-scan inputs (`config.Scan`):
   deterministically — only location is, since location is structured metadata
   while titles encode role nuance worth letting a model judge (which is what
   `prefilter` is for). For the list-then-detail boards (`workday`,
-  `smartrecruiters`, `phenom`) the filter is additionally pushed down into the
-  client to skip per-posting detail GETs; `_filtered` counts are unchanged, and
-  note `--limit` caps LLM calls, not these HTTP fetches. **Workday gotcha**: a
-  single-location list row is bare "City, ST" with no country, so a
-  country-anchored regex (`United States`) prefilters everything as non-matching
-  — write Workday filters against city/state/"Remote" forms. Multi-location rows
-  ("2 Locations") are always detail-resolved to the full location set (city +
-  country descriptors) before filtering, so they're safe either way.
+  `smartrecruiters`, `phenom`, `eightfold`) the filter is additionally pushed
+  down into the client to skip per-posting detail GETs; `_filtered` counts are
+  unchanged, and note `--limit` caps LLM calls, not these HTTP fetches.
+  **Workday gotcha**: a single-location list row is bare "City, ST" with no
+  country, so a country-anchored regex (`United States`) prefilters everything
+  as non-matching — write Workday filters against city/state/"Remote" forms.
+  Multi-location rows ("2 Locations") are always detail-resolved to the full
+  location set (city + country descriptors) before filtering, so they're safe
+  either way.
 - `prefilter`: optional `Prefilter(criterion, model, batch_size, title_precut)`
   — a cheap-model triage stage between `location_filter` and extraction, for
   scans over boards where relevant roles are a small minority (a regex can't
@@ -247,15 +254,15 @@ Mechanics:
 - **Content dedup**: the scan JSONL has no JD body, so the ranker re-fetches
   content via `client.fetch_postings(<pool ids>)` and joins on `posting.id`.
   Every client implements the method: list-then-detail boards (`workday`,
-  `smartrecruiters`, `phenom`) do targeted detail GETs (their posting ids are
-  directly addressable detail paths — a full walk is one GET per posting, 10+
-  minutes on a ~2k board with no location_filter pushdown); one-shot boards
-  derive it from the cheap full walk (`fetch_by_walk`). Postings delisted since
-  the scan surface as `dropped` either way. It then strips the prefix/suffix
-  shared across the pool (company blurb + EEO/benefits tail) and merges postings
-  whose remaining cores are string-identical — collapsing location-variant
-  clones into one competing entry; the canonical rep carries the member
-  locations/ids. Passing `--dedup-threshold N` additionally merges
+  `smartrecruiters`, `phenom`, `eightfold`) do targeted detail GETs (their
+  posting ids are directly addressable detail paths — a full walk is one GET per
+  posting, 10+ minutes on a ~2k board with no location_filter pushdown);
+  one-shot boards derive it from the cheap full walk (`fetch_by_walk`). Postings
+  delisted since the scan surface as `dropped` either way. It then strips the
+  prefix/suffix shared across the pool (company blurb + EEO/benefits tail) and
+  merges postings whose remaining cores are string-identical — collapsing
+  location-variant clones into one competing entry; the canonical rep carries
+  the member locations/ids. Passing `--dedup-threshold N` additionally merges
   near-duplicates with `rapidfuzz` `token_set_ratio ≥ N` (e.g. 90). Fuzzy
   merging is opt-in because it over-merges: distinct roles sharing heavy
   boilerplate (different teams, Senior/non-Senior variants) can clear the bar —

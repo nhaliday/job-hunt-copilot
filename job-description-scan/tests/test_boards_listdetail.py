@@ -16,6 +16,7 @@ import pytest
 import respx
 
 from job_description_scan.boards import workday as workday_module
+from job_description_scan.boards.eightfold import EightfoldClient
 from job_description_scan.boards.phenom import PhenomClient
 from job_description_scan.boards.smartrecruiters import SmartRecruitersClient
 from job_description_scan.boards.workday import WorkdayClient
@@ -377,3 +378,129 @@ def test_phenom_filter_pushdown(respx_mock):
     by_id = {p.id: p for p in client.iter_postings()}
     assert by_id["R200"].content_text == ""  # skipped, still yielded
     assert _ph_detail_calls(handler) == ["R100"]  # no jobDetail for R200
+
+
+# --------------------------------------------------------------------------- #
+# eightfold
+# --------------------------------------------------------------------------- #
+_EF_HOST = "searchcareers.acme.com"
+_EF_SEARCH = "/api/pcsx/search"
+_EF_DETAIL = "/api/pcsx/position_details"
+
+
+def _ef_client(location_filter=None) -> EightfoldClient:
+    return EightfoldClient(f"{_EF_HOST}/acme.com", location_filter)
+
+
+def _ef_pages(rows: list[dict], count: int) -> list[httpx.Response]:
+    return [
+        httpx.Response(200, json={"data": {"count": count, "positions": rows}}),
+        httpx.Response(200, json={"data": {"count": count, "positions": []}}),
+    ]
+
+
+def _ef_detail(**data) -> httpx.Response:
+    return httpx.Response(200, json={"status": 200, "data": data})
+
+
+@respx.mock(assert_all_called=False)
+def test_eightfold_empty_board_fails_loud(respx_mock):
+    respx_mock.get(host=_EF_HOST, path=_EF_SEARCH).mock(
+        return_value=httpx.Response(200, json={"data": {"count": 0, "positions": []}})
+    )
+    with pytest.raises(ValueError, match="returned 0 postings"):
+        list(_ef_client().iter_postings())
+
+
+@respx.mock(assert_all_called=False)
+def test_eightfold_parse(respx_mock):
+    rows = [
+        {"id": 101, "name": "Systems Engineer", "locations": ["Anytown, ST, US"]},
+        {"id": 102, "name": "Cloud Engineer", "locations": ["Other Town, ST, US"]},
+    ]
+    respx_mock.get(host=_EF_HOST, path=_EF_SEARCH).mock(side_effect=_ef_pages(rows, 2))
+    respx_mock.get(host=_EF_HOST, path=_EF_DETAIL, params={"position_id": "101"}).mock(
+        return_value=_ef_detail(
+            name="Systems Engineer",
+            locations=["Anytown, ST, US", "Remote, US"],
+            jobDescription="<p>Build <b>systems</b>.</p>",
+            publicUrl="https://searchcareers.acme.com/careers/job/101?x=1",
+        )
+    )
+    respx_mock.get(host=_EF_HOST, path=_EF_DETAIL, params={"position_id": "102"}).mock(
+        return_value=_ef_detail(jobDescription="<p>Cloud.</p>")
+        # no name/locations/publicUrl → row + hosted-url fallbacks
+    )
+    a, b = _ef_client().iter_postings()
+    assert a.id == "101"
+    assert a.location == "Anytown, ST, US | Remote, US"
+    assert a.content_text == "Build systems."
+    assert a.url == "https://searchcareers.acme.com/careers/job/101?x=1"
+    assert b.title == "Cloud Engineer"
+    assert b.location == "Other Town, ST, US"
+    assert b.url == f"https://{_EF_HOST}/careers/job/102"
+
+
+@respx.mock(assert_all_called=False)
+def test_eightfold_tie_shuffle_rescued_by_repeat_walks(respx_mock):
+    # Day-granular sort keys reshuffle every request, so one offset walk can
+    # both repeat and skip rows. Pass 1 serves [A,B] then [B] (C skipped);
+    # pass 2's reshuffle surfaces C. The union must reach the full count.
+    a = {"id": 1, "name": "A", "locations": ["Anytown, ST, US"]}
+    b = {"id": 2, "name": "B", "locations": ["Anytown, ST, US"]}
+    c = {"id": 3, "name": "C", "locations": ["Anytown, ST, US"]}
+
+    def page(rows):
+        return httpx.Response(200, json={"data": {"count": 3, "positions": rows}})
+
+    search = respx_mock.get(host=_EF_HOST, path=_EF_SEARCH).mock(
+        side_effect=[page([a, b]), page([b]), page([a, c]), page([b])]
+    )
+    for row in (a, b, c):
+        respx_mock.get(
+            host=_EF_HOST, path=_EF_DETAIL, params={"position_id": str(row["id"])}
+        ).mock(return_value=_ef_detail(jobDescription="<p>X.</p>"))
+    postings = list(_ef_client().iter_postings())
+    assert sorted(p.id for p in postings) == ["1", "2", "3"]
+    assert search.call_count == 4
+
+
+@respx.mock(assert_all_called=False)
+def test_eightfold_delisted_skipped_loudly(respx_mock, capsys):
+    rows = [
+        {"id": 101, "name": "Live Role", "locations": ["Anytown, ST, US"]},
+        {"id": 404404, "name": "Gone Role", "locations": ["Anytown, ST, US"]},
+    ]
+    respx_mock.get(host=_EF_HOST, path=_EF_SEARCH).mock(side_effect=_ef_pages(rows, 2))
+    respx_mock.get(host=_EF_HOST, path=_EF_DETAIL, params={"position_id": "101"}).mock(
+        return_value=_ef_detail(jobDescription="<p>Live.</p>")
+    )
+    respx_mock.get(
+        host=_EF_HOST, path=_EF_DETAIL, params={"position_id": "404404"}
+    ).mock(
+        return_value=httpx.Response(
+            404, json={"status": 404, "error": {"message": "Position not found"}}
+        )
+    )
+    assert [p.id for p in _ef_client().iter_postings()] == ["101"]
+    targeted = list(_ef_client().fetch_postings(["101", "404404"]))
+    assert [p.id for p in targeted] == ["101"]
+    assert capsys.readouterr().out.count("eightfold: skipping 404404") == 2
+
+
+@respx.mock(assert_all_called=False)
+def test_eightfold_filter_pushdown(respx_mock):
+    rows = [
+        {"id": 101, "name": "US Role", "locations": ["Anytown, ST, US"]},
+        {"id": 102, "name": "Abroad Role", "locations": ["International - Elsewhere"]},
+    ]
+    respx_mock.get(host=_EF_HOST, path=_EF_SEARCH).mock(side_effect=_ef_pages(rows, 2))
+    respx_mock.get(host=_EF_HOST, path=_EF_DETAIL, params={"position_id": "101"}).mock(
+        return_value=_ef_detail(jobDescription="<p>US.</p>")
+    )
+    detail_b = respx_mock.get(
+        host=_EF_HOST, path=_EF_DETAIL, params={"position_id": "102"}
+    )
+    by_id = {p.id: p for p in _ef_client(re.compile(r"\bUS\b")).iter_postings()}
+    assert by_id["102"].content_text == ""  # skipped, still yielded
+    assert not detail_b.called
