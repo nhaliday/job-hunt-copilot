@@ -14,8 +14,18 @@ import random
 from job_description_scan.ranking import Candidate, Judge, run_ladder
 
 _ROW_KEYS = {
-    "rank", "utility", "wins", "losses", "ties", "comparisons",
-    "title", "tier", "level", "locations", "posting_ids", "url",
+    "rank",
+    "utility",
+    "wins",
+    "losses",
+    "ties",
+    "comparisons",
+    "title",
+    "tier",
+    "level",
+    "locations",
+    "posting_ids",
+    "url",
 }
 
 
@@ -86,9 +96,7 @@ def test_swiss_finds_planted_winner():
     assert ranked[0]["posting_ids"][0] == "c00"
     # Swiss doesn't guarantee a total order; require strong rank correlation.
     planted = {f"c{i:02d}": i for i in range(n)}
-    d2 = sum(
-        (row["rank"] - 1 - planted[row["posting_ids"][0]]) ** 2 for row in ranked
-    )
+    d2 = sum((row["rank"] - 1 - planted[row["posting_ids"][0]]) ** 2 for row in ranked)
     spearman = 1 - 6 * d2 / (n * (n**2 - 1))
     assert spearman >= 0.8, f"spearman {spearman:.2f}"
 

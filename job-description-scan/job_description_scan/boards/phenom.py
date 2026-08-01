@@ -72,9 +72,7 @@ class PhenomClient:
                 try:
                     yield self._detail_posting(http, pid, row=None)
                 except (httpx.HTTPError, KeyError) as e:
-                    print(
-                        f"  phenom: skipping {pid}: {type(e).__name__}: {e}"
-                    )
+                    print(f"  phenom: skipping {pid}: {type(e).__name__}: {e}")
 
     def _list_rows(self, http: httpx.Client) -> list[dict]:
         # Materialize before detail fetches (see workday.py: offset pagination
@@ -99,9 +97,7 @@ class PhenomClient:
                     # A wrong host that still serves a widgets endpoint would
                     # look like an empty board — raise instead of silently
                     # scanning nothing (mirrors the smartrecruiters client).
-                    raise ValueError(
-                        f"Phenom site {self.host!r} returned 0 postings"
-                    )
+                    raise ValueError(f"Phenom site {self.host!r} returned 0 postings")
             page = data["data"]["jobs"]
             before = len(rows)
             for row in page:

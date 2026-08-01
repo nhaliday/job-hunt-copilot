@@ -227,9 +227,7 @@ def test_smartrecruiters_targeted_fetch_and_delisted(respx_mock, capsys):
     respx_mock.get(host=_SR_HOST, path=f"{_SR_LIST}/744000404").mock(
         return_value=httpx.Response(404)
     )
-    got = list(
-        SmartRecruitersClient("acme").fetch_postings(["744000001", "744000404"])
-    )
+    got = list(SmartRecruitersClient("acme").fetch_postings(["744000001", "744000404"]))
     assert [p.id for p in got] == ["744000001"]
     # No list row available: location must come from the detail response.
     assert got[0].location == "Anytown, State, United States [US]"
@@ -341,9 +339,7 @@ def test_phenom_parse(respx_mock):
 
 @respx.mock(assert_all_called=False)
 def test_phenom_delisted_skipped_loudly(respx_mock, capsys):
-    live = {
-        "job": {"title": "ML Engineer", "description": "<p>Live.</p>"}
-    }
+    live = {"job": {"title": "ML Engineer", "description": "<p>Live.</p>"}}
     handler = _phenom_handler(
         [
             {"jobId": "R100", "title": "ML Engineer", "multi_location": ["A, B, C"]},

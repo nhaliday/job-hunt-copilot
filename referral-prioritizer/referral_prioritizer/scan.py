@@ -243,8 +243,7 @@ def _rank_board(
             cands = cands[:MAX_POOL]
         schedule = "swiss" if len(cands) > SWISS_THRESHOLD else "round-robin"
         print(
-            f"[{board.label}] ranking {role_key}: {len(cands)} clusters "
-            f"({schedule})",
+            f"[{board.label}] ranking {role_key}: {len(cands)} clusters ({schedule})",
             flush=True,
         )
         ranked = asyncio.run(
@@ -264,8 +263,7 @@ def _rank_board(
                 w.write(row)
         top = ranked[0]
         print(
-            f"[{board.label}] {role_key} → {rank_path.name} "
-            f"(#1: {top['title']})",
+            f"[{board.label}] {role_key} → {rank_path.name} (#1: {top['title']})",
             flush=True,
         )
 
@@ -275,9 +273,7 @@ def process_board(
 ) -> None:
     try:
         scan_cfg: Scan = factory.make_scan(board.kind, board.slug)
-        client = _CachingClient(
-            make_client(scan_cfg.source, scan_cfg.location_filter)
-        )
+        client = _CachingClient(make_client(scan_cfg.source, scan_cfg.location_filter))
         out_path = args.out_dir / f"{board.name}.jsonl"
         if out_path.exists() and not args.force:
             print(f"[{board.label}] scan exists, skipping", flush=True)
@@ -320,8 +316,7 @@ def _top3(out_path: Path, rank_path: Path, ladder: Ladder) -> list[str]:
         )
     )
     return [
-        f"{r['posting']['title']} | {r['posting'].get('url', '')}"
-        for r in rows[:3]
+        f"{r['posting']['title']} | {r['posting'].get('url', '')}" for r in rows[:3]
     ]
 
 
@@ -367,8 +362,7 @@ def write_summary(
                 dropped_path = out_dir / f"{board.name}-dropped.jsonl"
                 drops = (
                     Counter(
-                        x.get("_filter_stage", "")
-                        for x in _read_results(dropped_path)
+                        x.get("_filter_stage", "") for x in _read_results(dropped_path)
                     )
                     if dropped_path.exists()
                     else Counter()
@@ -425,9 +419,7 @@ def dry_run(boards: list[Board], factory, args: argparse.Namespace) -> None:
         # ~2.5K uncached input (JD) + ~600 output per extraction call
         extract_cost += _est_cost(model, survivors * 2500, survivors * 600)
     print(f"{len(boards)} boards, {total_located} located postings")
-    print(
-        f"triage: ~{int(triage_calls)} batch calls, ~${triage_cost:.2f}"
-    )
+    print(f"triage: ~{int(triage_calls)} batch calls, ~${triage_cost:.2f}")
     print(
         f"extraction: ~${extract_cost:.2f} "
         f"(assumes {KEEP_RATE:.0%} prefilter survival; cache reads not modeled)"
@@ -450,16 +442,12 @@ def main() -> None:
     ap.add_argument("--only", help="substring filter on board slug or label")
     ap.add_argument("--force", action="store_true", help="redo existing outputs")
     ap.add_argument("--board-concurrency", type=int, default=4)
-    ap.add_argument(
-        "--concurrency", type=int, default=8, help="LLM calls per board"
-    )
+    ap.add_argument("--concurrency", type=int, default=8, help="LLM calls per board")
     ap.add_argument("--model", help="override the factory's extraction model")
     ap.add_argument("--judge-model", default="claude-opus-4-8")
     ap.add_argument("--limit", type=int, help="postings per board (smoke tests)")
     ap.add_argument("--skip-rank", action="store_true")
-    ap.add_argument(
-        "--order-swap", action=argparse.BooleanOptionalAction, default=True
-    )
+    ap.add_argument("--order-swap", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument("--dry-run", action="store_true", help="counts + cost, no spend")
     args = ap.parse_args()
 
@@ -471,9 +459,7 @@ def main() -> None:
     if args.only:
         needle = args.only.lower()
         boards = [
-            b
-            for b in boards
-            if needle in b.slug.lower() or needle in b.label.lower()
+            b for b in boards if needle in b.slug.lower() or needle in b.label.lower()
         ]
     if not boards:
         raise SystemExit("no matching scannable boards")

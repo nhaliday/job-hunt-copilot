@@ -201,8 +201,7 @@ async def _run_prefilter(
     system_blocks = cached_system([instructions])
     indexed = list(enumerate(postings))
     batches = [
-        indexed[i : i + pf.batch_size]
-        for i in range(0, len(indexed), pf.batch_size)
+        indexed[i : i + pf.batch_size] for i in range(0, len(indexed), pf.batch_size)
     ]
 
     async def triage(batch: list[tuple[int, Posting]]) -> dict:
@@ -224,9 +223,7 @@ async def _run_prefilter(
             "usage": {
                 "input_tokens": getattr(usage, "input_tokens", 0) or 0,
                 "output_tokens": getattr(usage, "output_tokens", 0) or 0,
-                "cache_read_input_tokens": getattr(
-                    usage, "cache_read_input_tokens", 0
-                )
+                "cache_read_input_tokens": getattr(usage, "cache_read_input_tokens", 0)
                 or 0,
             },
         }
@@ -265,9 +262,7 @@ async def _run_prefilter(
                     }
                 )
     stats["kept"] = len(survivors)
-    stats["dropped"] = sum(
-        1 for r in audit if r.get("_filter_stage") == "prefilter"
-    )
+    stats["dropped"] = sum(1 for r in audit if r.get("_filter_stage") == "prefilter")
     audit.append({"_prefilter_stats": stats})
     return survivors, audit
 
@@ -311,14 +306,9 @@ async def _call(
         "model": model,
         "input_tokens": getattr(usage, "input_tokens", 0) or 0,
         "output_tokens": getattr(usage, "output_tokens", 0) or 0,
-        "cache_creation_input_tokens": getattr(
-            usage, "cache_creation_input_tokens", 0
-        )
+        "cache_creation_input_tokens": getattr(usage, "cache_creation_input_tokens", 0)
         or 0,
-        "cache_read_input_tokens": getattr(
-            usage, "cache_read_input_tokens", 0
-        )
-        or 0,
+        "cache_read_input_tokens": getattr(usage, "cache_read_input_tokens", 0) or 0,
     }
     return {
         "posting": _posting_dict(posting),

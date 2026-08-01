@@ -16,8 +16,10 @@ from jinja2 import Environment, StrictUndefined
 
 def main() -> int:
     if len(sys.argv) != 4:
-        print(f"Usage: {sys.argv[0]} <source.md> <variants.toml> <output_dir>",
-              file=sys.stderr)
+        print(
+            f"Usage: {sys.argv[0]} <source.md> <variants.toml> <output_dir>",
+            file=sys.stderr,
+        )
         return 2
 
     src = Path(sys.argv[1])

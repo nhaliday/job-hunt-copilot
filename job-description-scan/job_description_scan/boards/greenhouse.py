@@ -23,8 +23,7 @@ class GreenhouseClient:
 
     def iter_postings(self) -> Iterable[Posting]:
         url = (
-            f"https://boards-api.greenhouse.io/v1/boards/{self.slug}"
-            "/jobs?content=true"
+            f"https://boards-api.greenhouse.io/v1/boards/{self.slug}/jobs?content=true"
         )
         r = httpx.get(url, timeout=30)
         r.raise_for_status()

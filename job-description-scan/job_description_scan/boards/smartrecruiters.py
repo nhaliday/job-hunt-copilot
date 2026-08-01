@@ -64,10 +64,7 @@ class SmartRecruitersClient:
                 try:
                     yield self._detail_posting(http, base, pid, row=None)
                 except httpx.HTTPError as e:
-                    print(
-                        f"  smartrecruiters: skipping {pid}: "
-                        f"{type(e).__name__}: {e}"
-                    )
+                    print(f"  smartrecruiters: skipping {pid}: {type(e).__name__}: {e}")
 
     def _list_rows(self, http: httpx.Client, base: str) -> list[dict]:
         # Materialize before detail fetches (see workday.py: offset pagination

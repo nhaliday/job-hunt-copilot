@@ -56,8 +56,9 @@ def _find_country_facet(facets: list) -> list | None:
     return None
 
 
-def _count_workday(http: httpx.Client, slug: str, country_pattern: re.Pattern,
-                   row_pattern: re.Pattern) -> int:
+def _count_workday(
+    http: httpx.Client, slug: str, country_pattern: re.Pattern, row_pattern: re.Pattern
+) -> int:
     prefix, _, site = slug.partition("/")
     host = prefix if ".myworkday" in prefix else f"{prefix}.myworkdayjobs.com"
     tenant = prefix.split(".", 1)[0]
@@ -71,8 +72,11 @@ def _count_workday(http: httpx.Client, slug: str, country_pattern: re.Pattern,
     # tenant's locationsText format (campus names, "State - City" styles, ...).
     countries = _find_country_facet(first.get("facets") or [])
     if countries is not None:
-        return sum(v.get("count", 0) for v in countries
-                   if country_pattern.search(v.get("descriptor") or ""))
+        return sum(
+            v.get("count", 0)
+            for v in countries
+            if country_pattern.search(v.get("descriptor") or "")
+        )
 
     # Fallback for tenants without a country facet: their locationsText is
     # typically country-less too (street addresses, campus names), so rows the
@@ -99,7 +103,9 @@ def _count_workday(http: httpx.Client, slug: str, country_pattern: re.Pattern,
         offset += 20
     rows = list(by_path.values())
 
-    matched = [row for row in rows if row_pattern.search(row.get("locationsText") or "")]
+    matched = [
+        row for row in rows if row_pattern.search(row.get("locationsText") or "")
+    ]
     unmatched = [row for row in rows if row not in matched]
 
     def detail_matches(row: dict) -> bool:
@@ -139,8 +145,13 @@ def _count_phenom(http: httpx.Client, slug: str, pattern: re.Pattern) -> int:
     return sum(1 for row in rows if pattern.search(ph_locations(row)))
 
 
-def count_located(http: httpx.Client, kind: str, slug: str,
-                  pattern: re.Pattern, workday_pattern: re.Pattern) -> int:
+def count_located(
+    http: httpx.Client,
+    kind: str,
+    slug: str,
+    pattern: re.Pattern,
+    workday_pattern: re.Pattern,
+) -> int:
     if kind == "workday":
         return _count_workday(http, slug, pattern, workday_pattern)
     if kind == "smartrecruiters":
@@ -171,8 +182,9 @@ def main() -> None:
     def job(r: dict) -> None:
         with httpx.Client(timeout=30, follow_redirects=True) as http:
             try:
-                n = count_located(http, r["board_kind"], r["board_slug"],
-                                  pattern, workday_pattern)
+                n = count_located(
+                    http, r["board_kind"], r["board_slug"], pattern, workday_pattern
+                )
             except Exception as e:  # noqa: BLE001 — per-board isolation, reported
                 print(f"  WARN {r['company']}: {type(e).__name__}: {e}")
                 return

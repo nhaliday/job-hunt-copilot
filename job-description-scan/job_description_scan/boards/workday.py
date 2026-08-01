@@ -88,9 +88,7 @@ class WorkdayClient:
                 try:
                     yield self._detail_posting(http, path, row=None)
                 except httpx.HTTPError as e:
-                    print(
-                        f"  workday: skipping {path}: {type(e).__name__}: {e}"
-                    )
+                    print(f"  workday: skipping {path}: {type(e).__name__}: {e}")
 
     def _list_rows(self, http: httpx.Client) -> list[dict]:
         # Materialize the whole list before any detail fetch: offset pagination
@@ -174,7 +172,6 @@ class WorkdayClient:
             title=info.get("title") or (row or {}).get("title", ""),
             location=_enriched_location(info),
             content_text=strip_html(info.get("jobDescription") or ""),
-            url=info.get("externalUrl")
-            or f"https://{self.host}/{self.site}{path}",
+            url=info.get("externalUrl") or f"https://{self.host}/{self.site}{path}",
             raw=info,
         )

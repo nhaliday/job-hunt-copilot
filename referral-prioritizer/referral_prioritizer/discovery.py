@@ -40,7 +40,19 @@ WEB_SEARCH = {"type": "web_search_20260209", "name": "web_search", "max_uses": 5
 _PROBE_WORKERS = 12
 
 # Words too generic to corroborate a board's identity on their own.
-_STOPWORDS = {"inc", "llc", "ltd", "lp", "co", "corp", "company", "group", "the", "of", "and"}
+_STOPWORDS = {
+    "inc",
+    "llc",
+    "ltd",
+    "lp",
+    "co",
+    "corp",
+    "company",
+    "group",
+    "the",
+    "of",
+    "and",
+}
 
 _BOARD_URL = {
     "greenhouse": "https://boards.greenhouse.io/{slug}",
@@ -60,8 +72,14 @@ class Verification(BaseModel):
 
 class Discovery(BaseModel):
     kind: Literal[
-        "greenhouse", "ashby", "lever", "workday", "smartrecruiters",
-        "custom", "none", "unknown",
+        "greenhouse",
+        "ashby",
+        "lever",
+        "workday",
+        "smartrecruiters",
+        "custom",
+        "none",
+        "unknown",
     ]
     slug: str = Field(
         description="Board slug for the five scannable kinds (workday:"
@@ -119,15 +137,21 @@ def _corroborated(company: str, display: str | None) -> bool:
 
 def _slug_variants(name: str) -> list[str]:
     base = re.sub(r"\s*\(.*?\)", "", name)
-    base = re.sub(r",?\s+(Inc\.?|LLC\.?|Ltd\.?|L\.P\.|Corp\.?|Co\.)$", "", base, flags=re.I)
+    base = re.sub(
+        r",?\s+(Inc\.?|LLC\.?|Ltd\.?|L\.P\.|Corp\.?|Co\.)$", "", base, flags=re.I
+    )
     base = base.replace("&", "and").strip().rstrip(".,")
     words = re.findall(r"[A-Za-z0-9]+", base)
     if not words:
         return []
     camel = re.findall(r"[A-Z][a-z]+|[A-Z]+(?![a-z])|[a-z]+|\d+", base)
     out = [base]  # as-is, for case-sensitive ashby slugs
-    for v in ("".join(words).lower(), "-".join(w.lower() for w in words),
-              "-".join(w.lower() for w in camel), words[0].lower()):
+    for v in (
+        "".join(words).lower(),
+        "-".join(w.lower() for w in words),
+        "-".join(w.lower() for w in camel),
+        words[0].lower(),
+    ):
         if v and v not in out:
             out.append(v)
     return out
@@ -156,30 +180,41 @@ def _get_json(http: httpx.Client, url: str, **params) -> dict | list | None:
 
 def probe(http: httpx.Client, company: str) -> ProbeHit | None:
     for slug in _slug_variants(company):
-        data = _get_json(http, f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs")
+        data = _get_json(
+            http, f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs"
+        )
         if isinstance(data, dict) and "jobs" in data:
             root = _get_json(http, f"https://boards-api.greenhouse.io/v1/boards/{slug}")
             display = root.get("name") if isinstance(root, dict) else None
             titles = [j.get("title", "") for j in data["jobs"][:5]]
             return ProbeHit("greenhouse", slug, titles, display)
 
-        data = _get_json(http, f"https://api.lever.co/v0/postings/{slug}", mode="json", limit=5)
+        data = _get_json(
+            http, f"https://api.lever.co/v0/postings/{slug}", mode="json", limit=5
+        )
         if isinstance(data, list):
             return ProbeHit("lever", slug, [j.get("text", "") for j in data[:5]], None)
 
         data = _get_json(
-            http, "https://api.ashbyhq.com/posting-api/job-board/" + urllib.parse.quote(slug)
+            http,
+            "https://api.ashbyhq.com/posting-api/job-board/" + urllib.parse.quote(slug),
         )
         if isinstance(data, dict) and "jobs" in data:
-            return ProbeHit("ashby", slug, [j.get("title", "") for j in data["jobs"][:5]], None)
+            return ProbeHit(
+                "ashby", slug, [j.get("title", "") for j in data["jobs"][:5]], None
+            )
 
         data = _get_json(
-            http, f"https://api.smartrecruiters.com/v1/companies/{slug}/postings", limit=5
+            http,
+            f"https://api.smartrecruiters.com/v1/companies/{slug}/postings",
+            limit=5,
         )
         if isinstance(data, dict) and data.get("totalFound", 0) > 0:
             rows = data["content"]
             display = (rows[0].get("company") or {}).get("name")
-            return ProbeHit("smartrecruiters", slug, [r.get("name", "") for r in rows], display)
+            return ProbeHit(
+                "smartrecruiters", slug, [r.get("name", "") for r in rows], display
+            )
     return None
 
 
@@ -192,8 +227,14 @@ def probe_all(pending: list[dict]) -> list[ProbeHit | None]:
             return list(ex.map(lambda row: probe(http, row["company"]), pending))
 
 
-async def _parse(anth: anthropic.AsyncAnthropic, model: str, system: str, prompt: str,
-                 output_format: type[BaseModel], tools: list[dict] | None = None):
+async def _parse(
+    anth: anthropic.AsyncAnthropic,
+    model: str,
+    system: str,
+    prompt: str,
+    output_format: type[BaseModel],
+    tools: list[dict] | None = None,
+):
     messages: list[dict] = [{"role": "user", "content": prompt}]
     extra = {"tools": tools} if tools else {}
     for _ in range(4):
@@ -220,8 +261,9 @@ def _context(row: dict) -> str:
     )
 
 
-async def verify(anth: anthropic.AsyncAnthropic, model: str, row: dict,
-                 hit: ProbeHit) -> Verification:
+async def verify(
+    anth: anthropic.AsyncAnthropic, model: str, row: dict, hit: ProbeHit
+) -> Verification:
     titles = "\n".join(f"- {t}" for t in hit.titles if t) or "(no titles returned)"
     display = f"\nBoard display name: {hit.display_name}" if hit.display_name else ""
     prompt = (
@@ -234,7 +276,9 @@ async def verify(anth: anthropic.AsyncAnthropic, model: str, row: dict,
 
 async def discover(anth: anthropic.AsyncAnthropic, model: str, row: dict) -> Discovery:
     prompt = f"{_context(row)}\n\nFind this company's job board."
-    return await _parse(anth, model, DISCOVER_SYSTEM, prompt, Discovery, tools=[WEB_SEARCH])
+    return await _parse(
+        anth, model, DISCOVER_SYSTEM, prompt, Discovery, tools=[WEB_SEARCH]
+    )
 
 
 async def _board_alive(http: httpx.AsyncClient, kind: str, slug: str) -> bool | None:
@@ -254,15 +298,21 @@ async def _board_alive(http: httpx.AsyncClient, kind: str, slug: str) -> bool | 
         if not slug or "/" in slug:
             return None
         if kind == "greenhouse":
-            r = await http.get(f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs")
+            r = await http.get(
+                f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs"
+            )
             return r.status_code == 200 and "jobs" in r.json()
         if kind == "lever":
-            r = await http.get(f"https://api.lever.co/v0/postings/{slug}",
-                               params={"mode": "json", "limit": 1})
+            r = await http.get(
+                f"https://api.lever.co/v0/postings/{slug}",
+                params={"mode": "json", "limit": 1},
+            )
             return r.status_code == 200 and isinstance(r.json(), list)
         if kind == "ashby":
-            r = await http.get("https://api.ashbyhq.com/posting-api/job-board/"
-                               + urllib.parse.quote(slug))
+            r = await http.get(
+                "https://api.ashbyhq.com/posting-api/job-board/"
+                + urllib.parse.quote(slug)
+            )
             return r.status_code == 200 and "jobs" in r.json()
         # smartrecruiters: an unknown identifier is 200 + totalFound 0, so a
         # live-but-empty board is indistinguishable from a wrong slug — treat
@@ -288,10 +338,14 @@ async def _validated(http: httpx.AsyncClient, d: Discovery) -> Discovery:
     if ok:
         return d
     reason = "malformed" if ok is None else "not live/scannable"
-    return d.model_copy(update={
-        "kind": "unknown", "slug": "", "confidence": "low",
-        "note": f"{d.kind} claim {d.slug!r} {reason}; {d.note}"[:200],
-    })
+    return d.model_copy(
+        update={
+            "kind": "unknown",
+            "slug": "",
+            "confidence": "low",
+            "note": f"{d.kind} claim {d.slug!r} {reason}; {d.note}"[:200],
+        }
+    )
 
 
 def _write(rows: list[dict], out: Path) -> None:
@@ -300,18 +354,35 @@ def _write(rows: list[dict], out: Path) -> None:
     tmp.replace(out)
 
 
-def _apply(rows: list[dict], row: dict, out: Path, kind: str, slug: str,
-           confidence: str, source: str, note: str, url: str = "") -> None:
+def _apply(
+    rows: list[dict],
+    row: dict,
+    out: Path,
+    kind: str,
+    slug: str,
+    confidence: str,
+    source: str,
+    note: str,
+    url: str = "",
+) -> None:
     row["board_kind"], row["board_slug"] = kind, slug
     row["board_confidence"], row["board_source"] = confidence, source
     row["board_note"] = note
-    row["board_url"] = url or (_BOARD_URL[kind].format(slug=slug) if kind in _BOARD_URL else "")
+    row["board_url"] = url or (
+        _BOARD_URL[kind].format(slug=slug) if kind in _BOARD_URL else ""
+    )
     _write(rows, out)
     print(f"  {row['company']}: {kind} {slug} [{source}, {confidence}]")
 
 
-async def stage_b(rows: list[dict], out: Path, model: str, concurrency: int,
-                  verify_jobs: list[tuple[dict, ProbeHit]], discover_jobs: list[dict]) -> None:
+async def stage_b(
+    rows: list[dict],
+    out: Path,
+    model: str,
+    concurrency: int,
+    verify_jobs: list[tuple[dict, ProbeHit]],
+    discover_jobs: list[dict],
+) -> None:
     anth = anthropic.AsyncAnthropic(max_retries=8)
     sem = asyncio.Semaphore(concurrency)
 
@@ -319,17 +390,45 @@ async def stage_b(rows: list[dict], out: Path, model: str, concurrency: int,
         async with sem:
             v = await verify(anth, model, row, hit)
             if v.belongs_to_company:
-                _apply(rows, row, out, hit.kind, hit.slug, v.confidence,
-                       "probe+verify", "titles match company")
+                _apply(
+                    rows,
+                    row,
+                    out,
+                    hit.kind,
+                    hit.slug,
+                    v.confidence,
+                    "probe+verify",
+                    "titles match company",
+                )
                 return
             # Impostor board; find the real one.
             d = await _validated(http, await discover(anth, model, row))
-            _apply(rows, row, out, d.kind, d.slug, d.confidence, "llm", d.note, d.careers_url)
+            _apply(
+                rows,
+                row,
+                out,
+                d.kind,
+                d.slug,
+                d.confidence,
+                "llm",
+                d.note,
+                d.careers_url,
+            )
 
     async def resolve_miss(http: httpx.AsyncClient, row: dict) -> None:
         async with sem:
             d = await _validated(http, await discover(anth, model, row))
-            _apply(rows, row, out, d.kind, d.slug, d.confidence, "llm", d.note, d.careers_url)
+            _apply(
+                rows,
+                row,
+                out,
+                d.kind,
+                d.slug,
+                d.confidence,
+                "llm",
+                d.note,
+                d.careers_url,
+            )
 
     async with httpx.AsyncClient(timeout=10, follow_redirects=True) as http:
         await asyncio.gather(
@@ -338,21 +437,34 @@ async def stage_b(rows: list[dict], out: Path, model: str, concurrency: int,
         )
 
 
-BOARD_COLS = ("board_kind", "board_slug", "board_url", "board_confidence",
-              "board_source", "board_note")
+BOARD_COLS = (
+    "board_kind",
+    "board_slug",
+    "board_url",
+    "board_confidence",
+    "board_source",
+    "board_note",
+)
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--companies", type=Path, required=True)
-    ap.add_argument("--probe-only", action="store_true",
-                    help="no LLM calls; accept only corroborated probe hits")
-    ap.add_argument("--dry-run", action="store_true",
-                    help="probe and print per-stage counts + cost estimate, no writes")
+    ap.add_argument(
+        "--probe-only",
+        action="store_true",
+        help="no LLM calls; accept only corroborated probe hits",
+    )
+    ap.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="probe and print per-stage counts + cost estimate, no writes",
+    )
     ap.add_argument("--limit", type=int, help="resolve at most N rows")
     ap.add_argument("--model", default="claude-opus-4-8")
-    ap.add_argument("--concurrency", type=int, default=8,
-                    help="max concurrent LLM calls in phase B")
+    ap.add_argument(
+        "--concurrency", type=int, default=8, help="max concurrent LLM calls in phase B"
+    )
     args = ap.parse_args()
 
     df = pl.read_csv(args.companies, infer_schema_length=0)
@@ -381,23 +493,43 @@ def main() -> None:
         if hit and any(hit.titles) and _corroborated(row["company"], hit.display_name):
             accepted += 1
             if not args.dry_run:
-                _apply(rows, row, args.companies, hit.kind, hit.slug, "high",
-                       "probe", f"display name: {hit.display_name}")
+                _apply(
+                    rows,
+                    row,
+                    args.companies,
+                    hit.kind,
+                    hit.slug,
+                    "high",
+                    "probe",
+                    f"display name: {hit.display_name}",
+                )
         elif hit:
             verify_jobs.append((row, hit))
         else:
             discover_jobs.append(row)
 
-    print(f"probe-accepted: {accepted} | needs verify: {len(verify_jobs)}"
-          f" | needs discovery: {len(discover_jobs)}")
+    print(
+        f"probe-accepted: {accepted} | needs verify: {len(verify_jobs)}"
+        f" | needs discovery: {len(discover_jobs)}"
+    )
     if args.probe_only or args.dry_run:
         est = len(verify_jobs) * 0.01 + len(discover_jobs) * 0.06
-        print(f"est. LLM cost for the remainder on {args.model}: ~${est:.2f}"
-              " (verify ~1c, discovery ~6c incl. searches)")
+        print(
+            f"est. LLM cost for the remainder on {args.model}: ~${est:.2f}"
+            " (verify ~1c, discovery ~6c incl. searches)"
+        )
         return
 
-    asyncio.run(stage_b(rows, args.companies, args.model, args.concurrency,
-                        verify_jobs, discover_jobs))
+    asyncio.run(
+        stage_b(
+            rows,
+            args.companies,
+            args.model,
+            args.concurrency,
+            verify_jobs,
+            discover_jobs,
+        )
+    )
     print("done")
 
 

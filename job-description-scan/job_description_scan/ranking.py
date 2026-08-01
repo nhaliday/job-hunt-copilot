@@ -315,12 +315,16 @@ def _resolve(results: list[dict]) -> tuple[list[tuple[int, int]], dict]:
             loser = j if w == i else i
             edges.append((w, loser))
             tally.setdefault(w, {"wins": 0.0, "losses": 0.0, "ties": 0.0})["wins"] += 1
-            tally.setdefault(loser, {"wins": 0.0, "losses": 0.0, "ties": 0.0})["losses"] += 1
+            tally.setdefault(loser, {"wins": 0.0, "losses": 0.0, "ties": 0.0})[
+                "losses"
+            ] += 1
         else:  # order-swap disagreement → tie
             edges.append((i, j))
             edges.append((j, i))
             for k in (i, j):
-                tally.setdefault(k, {"wins": 0.0, "losses": 0.0, "ties": 0.0})["ties"] += 1
+                tally.setdefault(k, {"wins": 0.0, "losses": 0.0, "ties": 0.0})[
+                    "ties"
+                ] += 1
     return edges, tally
 
 
@@ -458,9 +462,13 @@ def main() -> None:
     ap = argparse.ArgumentParser(prog="job-description-scan.ranking")
     ap.add_argument("--scan", required=True, help="scan module, e.g. scans.acme")
     ap.add_argument("--results", type=Path, required=True, help="scan JSONL output")
-    ap.add_argument("--resume", type=Path, help="resume markdown (required unless --dry-run)")
+    ap.add_argument(
+        "--resume", type=Path, help="resume markdown (required unless --dry-run)"
+    )
     ap.add_argument("--ladder", required=True, help="role family (e.g. swe) or 'all'")
-    ap.add_argument("--schedule", choices=["round-robin", "swiss"], default="round-robin")
+    ap.add_argument(
+        "--schedule", choices=["round-robin", "swiss"], default="round-robin"
+    )
     ap.add_argument("--rounds", type=int, help="swiss rounds (default ceil(log2 n)+2)")
     ap.add_argument(
         "--dedup-threshold",
@@ -474,7 +482,11 @@ def main() -> None:
     ap.add_argument("--order-swap", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument("--concurrency", type=int, default=20)
     ap.add_argument("--dry-run", action="store_true", help="print counts, no API spend")
-    ap.add_argument("--out", type=Path, help="output JSONL (default _output/<scan>-rank-<role>.jsonl)")
+    ap.add_argument(
+        "--out",
+        type=Path,
+        help="output JSONL (default _output/<scan>-rank-<role>.jsonl)",
+    )
     args = ap.parse_args()
 
     scan, ladders = _load_ladders(args.scan, args.ladder)
@@ -502,8 +514,10 @@ def main() -> None:
         joined, dropped = join_content(rows, board)
         cands = dedupe(joined, args.dedup_threshold)
         n = len(cands)
-        pairs = n * (n - 1) // 2 if args.schedule == "round-robin" else (
-            _swiss_rounds(n, args.rounds) * (n // 2)
+        pairs = (
+            n * (n - 1) // 2
+            if args.schedule == "round-robin"
+            else (_swiss_rounds(n, args.rounds) * (n // 2))
         )
         calls = pairs * (2 if args.order_swap else 1)
         print(
@@ -522,8 +536,14 @@ def main() -> None:
 
         ranked = asyncio.run(
             run_ladder(
-                cands, resume_text, ladder.label, args.judge_model,
-                args.schedule, args.rounds, args.order_swap, args.concurrency,
+                cands,
+                resume_text,
+                ladder.label,
+                args.judge_model,
+                args.schedule,
+                args.rounds,
+                args.order_swap,
+                args.concurrency,
             )
         )
         out_path = args.out or Path("_output") / f"{scan_tail}-rank-{role_key}.jsonl"

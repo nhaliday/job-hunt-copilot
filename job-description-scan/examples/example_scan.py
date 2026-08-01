@@ -62,8 +62,7 @@ class Extraction(BaseModel):
     )
     yoe_min: int | None = Field(
         description=(
-            "Minimum years of experience stated in the JD. Null if not "
-            "specified."
+            "Minimum years of experience stated in the JD. Null if not specified."
         )
     )
     type_of_experience: str = Field(
