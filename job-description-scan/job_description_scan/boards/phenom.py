@@ -52,16 +52,22 @@ class PhenomClient:
         with httpx.Client(timeout=30, headers=_HEADERS) as http:
             for row in self._list_rows(http):
                 try:
-                    yield self._posting(http, row)
-                except (httpx.HTTPError, KeyError) as e:
+                    p = self._posting(http, row)
+                except httpx.HTTPError as e:
                     # Persistent failure on ONE detail call — skip the posting
-                    # loudly rather than abort the board. KeyError matches
-                    # fetch_postings: a posting delisted mid-walk answers 200
-                    # with jobDetail.data.job absent, not an HTTP error.
+                    # loudly rather than abort the board.
                     print(
                         f"  phenom: skipping {row.get('jobId')}: "
                         f"{type(e).__name__}: {e}"
                     )
+                    continue
+                if p is None:
+                    print(
+                        f"  phenom: skipping {row.get('jobId')}: delisted"
+                        " (jobDetail answered without a job payload)"
+                    )
+                    continue
+                yield p
 
     def fetch_postings(self, ids: Iterable[str]) -> Iterable[Posting]:
         """Targeted detail fetches by jobId. Lets the ranking join skip the
@@ -70,9 +76,17 @@ class PhenomClient:
         with httpx.Client(timeout=30, headers=_HEADERS) as http:
             for pid in ids:
                 try:
-                    yield self._detail_posting(http, pid, row=None)
-                except (httpx.HTTPError, KeyError) as e:
+                    p = self._detail_posting(http, pid, row=None)
+                except httpx.HTTPError as e:
                     print(f"  phenom: skipping {pid}: {type(e).__name__}: {e}")
+                    continue
+                if p is None:
+                    print(
+                        f"  phenom: skipping {pid}: delisted"
+                        " (jobDetail answered without a job payload)"
+                    )
+                    continue
+                yield p
 
     def _list_rows(self, http: httpx.Client) -> list[dict]:
         # Materialize before detail fetches (see workday.py: offset pagination
@@ -113,7 +127,7 @@ class PhenomClient:
             )
         return list(rows.values())
 
-    def _posting(self, http: httpx.Client, row: dict) -> Posting:
+    def _posting(self, http: httpx.Client, row: dict) -> Posting | None:
         pid = row["jobId"]
         loc = _locations(row)
         # List rows carry only a description teaser, so content requires the
@@ -132,11 +146,16 @@ class PhenomClient:
 
     def _detail_posting(
         self, http: httpx.Client, pid: str, row: dict | None
-    ) -> Posting:
+    ) -> Posting | None:
+        """None means delisted: jobDetail answers 200 with the "job" key
+        absent, an expected outcome at observed churn rates — so it is a
+        return value, not an exception. The envelope keys stay hard-indexed:
+        their absence is schema drift and must abort the walk loudly."""
         r = http.post(self.url, json={"ddoKey": "jobDetail", "jobId": pid})
         r.raise_for_status()
-        detail = r.json()["jobDetail"]["data"]["job"]  # fail loud; a delisted
-        # id surfaces here as a KeyError, which fetch_postings treats as a skip
+        detail = r.json()["jobDetail"]["data"].get("job")
+        if detail is None:
+            return None
         return Posting(
             id=pid,
             title=detail.get("title") or (row or {}).get("title", ""),

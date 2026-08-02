@@ -349,11 +349,36 @@ def test_phenom_delisted_skipped_loudly(respx_mock, capsys):
         {"R100": live},  # R404 delisted: jobDetail 200 without "job"
     )
     respx_mock.post(host=_PH_HOST, path="/widgets").mock(side_effect=handler)
-    # Mid-walk delisting must not abort the board (KeyError, not HTTPError).
+    # Mid-walk delisting must not abort the board (200 without "job" -> None).
     assert [p.id for p in PhenomClient(_PH_HOST).iter_postings()] == ["R100"]
     targeted = list(PhenomClient(_PH_HOST).fetch_postings(["R100", "R404"]))
     assert [p.id for p in targeted] == ["R100"]
-    assert capsys.readouterr().out.count("phenom: skipping R404: KeyError") == 2
+    assert capsys.readouterr().out.count("phenom: skipping R404: delisted") == 2
+
+
+@respx.mock(assert_all_called=False)
+def test_phenom_envelope_drift_fails_loud(respx_mock):
+    # Only the "job" key's absence means delisted; a restructured jobDetail
+    # ENVELOPE is schema drift and must abort, not soft-skip every posting.
+    def handle(request):
+        body = json.loads(request.content)
+        if body["ddoKey"] == "refineSearch":
+            return httpx.Response(
+                200,
+                json={
+                    "refineSearch": {
+                        "totalHits": 1,
+                        "data": {
+                            "jobs": [{"jobId": "R100", "multi_location": ["A, B, C"]}]
+                        },
+                    }
+                },
+            )
+        return httpx.Response(200, json={"jobDetailV2": {}})
+
+    respx_mock.post(host=_PH_HOST, path="/widgets").mock(side_effect=handle)
+    with pytest.raises(KeyError):
+        list(PhenomClient(_PH_HOST).iter_postings())
 
 
 @respx.mock(assert_all_called=False)
