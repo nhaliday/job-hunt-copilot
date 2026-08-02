@@ -67,7 +67,11 @@ def _board_hint(urls: list[str]) -> str:
 
 
 def _select(
-    rows: list[dict], kinds: set[str] | None, only: str | None, force: bool
+    rows: list[dict],
+    kinds: set[str] | None,
+    only: str | None,
+    force: bool,
+    zero_only: bool = False,
 ) -> list[dict]:
     out = []
     for r in rows:
@@ -77,7 +81,13 @@ def _select(
             continue
         if only and only.lower() not in r["company"].lower():
             continue
-        if r.get("n_postings_theirstack") and not force:
+        count = r.get("n_postings_theirstack")
+        if zero_only:
+            # Re-probe ambiguous zeros (quiet vs absent), e.g. at a wider
+            # --max-age-days; rows never swept or with hits are excluded.
+            if count != "0":
+                continue
+        elif count and not force:
             continue
         out.append(r)
     return out
@@ -132,6 +142,11 @@ def main() -> None:
         "--force", action="store_true", help="re-query rows that already have a count"
     )
     ap.add_argument(
+        "--zero-only",
+        action="store_true",
+        help="re-query only rows whose count is 0 (quiet vs absent)",
+    )
+    ap.add_argument(
         "--dry-run", action="store_true", help="row count + credit estimate, no HTTP"
     )
     args = ap.parse_args()
@@ -141,7 +156,7 @@ def main() -> None:
         for col in _COLUMNS:
             r.setdefault(col, "")
     kinds = set(args.kinds.split(",")) if args.kinds else None
-    selected = _select(rows, kinds, args.only, args.force)
+    selected = _select(rows, kinds, args.only, args.force, args.zero_only)
     if args.limit_rows:
         selected = selected[: args.limit_rows]
     est = len(selected) * (args.sample + 1)

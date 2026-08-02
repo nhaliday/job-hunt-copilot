@@ -66,3 +66,14 @@ def test_select_filters_kinds_only_and_resume():
         "Acme",
         "Delta",
     ]
+
+
+def test_select_zero_only():
+    rows = [
+        _row("Acme"),  # never swept
+        _row("Beta", count="0"),  # ambiguous zero -> re-probed
+        _row("Gamma", count="12"),  # has hits -> excluded
+    ]
+    assert [r["company"] for r in _select(rows, None, None, False, zero_only=True)] == [
+        "Beta"
+    ]
