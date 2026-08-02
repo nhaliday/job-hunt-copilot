@@ -68,6 +68,22 @@ pipeline is built in reviewable stages; implemented so far:
    `--judge-model` (default `claude-opus-5`), `--skip-rank`, `--no-order-swap`,
    `--dry-run` (counts + cost estimate, no spend or HTTP).
 
+5. **TheirStack census sweep** (`referral_prioritizer/theirstack.py`) — queries
+   the TheirStack jobs API (needs `THEIRSTACK_API_KEY`; ~`--sample`+1 paid API
+   credits per row, 1 credit per job returned) by case-insensitive company name
+   and writes three columns in place: `n_postings_theirstack` (total over
+   `--max-age-days`, default 30), `theirstack_companies` (>1 = ambiguous name
+   match — eyeball before trusting), and `theirstack_hint` (board fingerprint
+   from sampled jobs' `final_url` hosts, `kind:slug` when a native kind is
+   recognizable, else the bare host). Corroborates discovery on scannable rows
+   and surfaces ready-to-scan census fixes for custom/unknown/none rows — hints
+   are advisory; `board_*` columns are never touched (applying them is a manual
+   step). Resumable (rows with a count are skipped; `--force` re-queries); the
+   CSV is rewritten atomically per resolved row; a 401/402/403 aborts the run
+   instead of warning per row. Flags: `--kinds custom,unknown,none`,
+   `--only <substr>`, `--limit-rows`, `--sample`, `--dry-run` (row count +
+   credit estimate, no HTTP).
+
 Known limitation: a probe-accepted board can be genuine but _secondary_ (a
 sub-org or test board on one ATS while the main careers system lives elsewhere).
 The pre-gate stats stage will expose these via posting counts.

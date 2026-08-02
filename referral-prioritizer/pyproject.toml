@@ -30,3 +30,6 @@ packages = ["referral_prioritizer"]
 [tool.pyright]
 venvPath = "."
 venv = ".venv"
+
+[dependency-groups]
+dev = ["pytest>=8"]
