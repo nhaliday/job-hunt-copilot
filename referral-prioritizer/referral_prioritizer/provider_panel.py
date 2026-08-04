@@ -223,20 +223,33 @@ def _pull_theirstack(http: httpx.Client, spec: str, max_jobs: int) -> list[dict]
     return rows
 
 
-def _pull_fantastic(http: httpx.Client, domain: str) -> list[dict]:
+def _pull_fantastic(http: httpx.Client, spec: str) -> list[dict]:
+    # spec: "domain:X" or "org:X" (some companies are only findable by
+    # organization name — their domain_derived doesn't match the real one);
+    # a bare value means domain.
+    mode, _, value = spec.rpartition(":")
+    mode = mode or "domain"
     count = http.get(
         _FJ_COUNT,
-        params={"time_frame": "6m", "domain": domain},
+        params={
+            "time_frame": "6m",
+            ("domain" if mode == "domain" else "organization"): value,
+        },
         headers={
             "Authorization": f"Bearer {os.environ.get('FANTASTIC_JOBS_API_KEY', '')}"
         },
     )
     if count.status_code == 200:
         print(f"    fantastic: pre-sized count {count.json().get('count')}")
+    actor_filter = (
+        {"domainFilter": [value]}
+        if mode == "domain"
+        else {"organizationSearch": [value]}
+    )
     r = http.post(
         _APIFY_RUN,
         params={"token": os.environ["APIFY_TOKEN"]},
-        json={"domainFilter": [domain], "timeRange": "6m", "limit": 5000},
+        json={**actor_filter, "timeRange": "6m", "limit": 5000},
         timeout=280,
     )
     r.raise_for_status()
