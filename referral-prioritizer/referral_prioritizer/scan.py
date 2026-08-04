@@ -463,7 +463,8 @@ def main() -> None:
     factory = importlib.import_module(args.boards)
     ladders: list[Ladder] = factory.ladders()
 
-    boards = load_boards(args.companies)
+    all_boards = load_boards(args.companies)
+    boards = all_boards
     if args.only:
         needle = args.only.lower()
         boards = [
@@ -482,7 +483,10 @@ def main() -> None:
     with ThreadPoolExecutor(max_workers=args.board_concurrency) as ex:
         list(ex.map(lambda b: process_board(b, factory, ladders, args), boards))
 
-    path = write_summary(args.companies, boards, ladders, args.out_dir)
+    # The summary universe is ALL scannable boards, not the --only selection:
+    # it is rebuilt wholesale from disk artifacts, so passing the filtered
+    # list would truncate every unselected company's row.
+    path = write_summary(args.companies, all_boards, ladders, args.out_dir)
     print(f"\n→ {path}", flush=True)
 
 
