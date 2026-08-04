@@ -84,6 +84,14 @@ pipeline is built in reviewable stages; implemented so far:
    `--only <substr>`, `--limit-rows`, `--sample`, `--dry-run` (row count +
    credit estimate, no HTTP).
 
+Side tool: **provider liveness panel**
+(`referral_prioritizer/provider_panel.py`) — measures job-data APIs (TheirStack,
+fantastic.jobs via Apify) against native-client ground truth: id-level
+recall/precision per board kind as a function of recency window. `--pull` caches
+one widest-window pull per panel company (resumable; costs credits); `--report`
+recomputes every window/anchor/is_closed variant offline from the cached rows,
+free. Panel CSV lives in the consuming project.
+
 Known limitation: a probe-accepted board can be genuine but _secondary_ (a
 sub-org or test board on one ATS while the main careers system lives elsewhere).
 The pre-gate stats stage will expose these via posting counts.
