@@ -44,9 +44,13 @@ _APIFY_RUN = (
 
 WINDOWS = (7, 14, 30, 60, 90, 180)
 _ANCHORS = {
-    "theirstack": ("date_posted", "discovered_at"),
+    # "reposted" = date_reposted falling back to date_posted: boards like
+    # ashby re-post, and the repost date tracks liveness far better than the
+    # original posting date.
+    "theirstack": ("date_posted", "discovered_at", "reposted"),
     "fantastic": ("date_posted", "date_created"),
 }
+_ANCHOR_FIELDS = {"reposted": ("date_reposted", "date_posted")}
 
 _UUID = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.IGNORECASE
@@ -115,11 +119,17 @@ def compute_curves(
     parsed = []
     for r in rows:
         key = provider_key(kind, r.get("final_url") or r.get("url") or "")
+        dates = {}
+        for a in _ANCHORS[provider]:
+            fields = _ANCHOR_FIELDS.get(a, (a,))
+            dates[a] = next((d for f in fields if (d := _parse_dt(r.get(f)))), None)
         parsed.append(
             {
                 "key": key,
-                "dates": {a: _parse_dt(r.get(a)) for a in _ANCHORS[provider]},
-                "open": r.get("is_closed") is False,
+                "dates": dates,
+                # closed_at is the field that actually appears on job rows
+                # (is_closed is only a request filter).
+                "open": not r.get("closed_at") and r.get("is_closed") is not True,
             }
         )
     filters = ("all", "open") if provider == "theirstack" else ("all",)

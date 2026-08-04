@@ -57,7 +57,7 @@ def _row(uuid, days_old, closed=False):
         else "https://www.linkedin.com/x",
         "date_posted": stamp,
         "discovered_at": stamp,
-        "is_closed": closed,
+        "closed_at": stamp if closed else None,
     }
 
 
