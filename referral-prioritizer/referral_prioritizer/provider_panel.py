@@ -274,6 +274,7 @@ def _pull_fantastic(http: httpx.Client, spec: str) -> list[dict]:
 
 def _pull(panel: list[dict], out_dir: Path, only: str | None, max_jobs: int) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
+    dead: dict[str, str] = {}
     with httpx.Client(timeout=60) as http:
         for row in panel:
             company = row["company"]
@@ -300,14 +301,28 @@ def _pull(panel: list[dict], out_dir: Path, only: str | None, max_jobs: int) -> 
                 ("fantastic", row["fantastic_domain"]),
             ):
                 path = out_dir / f"{company}-{provider}.jsonl"
-                if spec == "skip" or path.exists():
-                    print(f"    {provider}: {'skip' if spec == 'skip' else 'cached'}")
+                if spec == "skip" or path.exists() or provider in dead:
+                    reason = (
+                        "skip"
+                        if spec == "skip"
+                        else "cached"
+                        if path.exists()
+                        else f"skipped ({dead[provider]})"
+                    )
+                    print(f"    {provider}: {reason}")
                     continue
-                rows = (
-                    _pull_theirstack(http, spec, max_jobs)
-                    if provider == "theirstack"
-                    else _pull_fantastic(http, spec)
-                )
+                try:
+                    rows = (
+                        _pull_theirstack(http, spec, max_jobs)
+                        if provider == "theirstack"
+                        else _pull_fantastic(http, spec)
+                    )
+                except SystemExit as e:
+                    # One provider dying (e.g. out of credits) must not kill
+                    # the other's pulls; skip it for the rest of the panel.
+                    dead[provider] = str(e)
+                    print(f"    {provider}: DEAD — {e}")
+                    continue
                 with open(path, "w") as f:
                     for j in rows:
                         f.write(json.dumps(j) + "\n")
