@@ -394,6 +394,17 @@ def write_summary(
     with open(companies_csv, newline="") as f:
         for r in csv.DictReader(f):
             board = by_key.get((r.get("board_kind", ""), r.get("board_slug", "")))
+            if (
+                board is None
+                and r.get("board_kind") in SCANNABLE
+                and r.get("board_slug")
+            ):
+                # Scannable but currently 0-located (e.g. a board that has
+                # emptied since its scan): n_located>0 gates scanning, not
+                # summary membership — keep the row and any artifact data.
+                board = Board(
+                    kind=r["board_kind"], slug=r["board_slug"], label=r["company"]
+                )
             if board is not None:
                 row = {
                     "company": r["company"],

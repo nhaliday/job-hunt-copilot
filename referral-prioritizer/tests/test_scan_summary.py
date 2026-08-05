@@ -17,6 +17,7 @@ Acme,5,greenhouse,acme,10,
 Beta,2,ashby,beta,4,
 Gamma Fund,1,custom,,,42
 Delta,1,none,,,7
+Emptied,1,lever,emptied,0,
 """
 
 
@@ -44,17 +45,25 @@ def test_summary_covers_all_boards_even_without_artifacts(tmp_path):
         f.write(json.dumps(_result_row("1", "swe", "strong")) + "\n")
         f.write(json.dumps(_result_row("2", "swe", "blocked")) + "\n")
 
+    # "Emptied" is scannable but 0-located and NOT in the boards list — its
+    # historical artifact must still earn a summary row.
+    emptied = Board(kind="lever", slug="emptied", label="Emptied")
+    with open(out_dir / f"{emptied.name}.jsonl", "w") as f:
+        f.write(json.dumps(_result_row("9", "swe", "stretch")) + "\n")
+
     path = write_summary(
         companies, boards, [Ladder(roles=("swe",), label="swe")], out_dir
     )
     rows = {r["company"]: r for r in csv.DictReader(open(path))}
 
-    assert set(rows) == {"Acme", "Beta"}  # Beta survives; no enriched rows yet
+    assert set(rows) == {"Acme", "Beta", "Emptied"}
     assert rows["Acme"]["swe_strong"] == "1"
     assert rows["Acme"]["swe_blocked"] == "1"
     assert rows["Acme"]["scan_source"] == "native"
     assert rows["Beta"]["n_scanned"] == ""  # blank counts, not dropped
     assert rows["Beta"]["n_located"] == "4"
+    assert rows["Emptied"]["swe_stretch"] == "1"  # artifact data preserved
+    assert rows["Emptied"]["n_located"] == "0"
 
 
 def test_summary_includes_theirstack_enrichment_rows(tmp_path):
