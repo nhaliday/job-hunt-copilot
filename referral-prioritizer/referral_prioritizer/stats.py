@@ -41,8 +41,13 @@ SCANNABLE = (
     "eightfold",
 )
 
-# Case defaults live with the caller via flags; these mirror a US+Canada scope.
-DEFAULT_FILTER = r"\b(USA?|United States|Canada)\b"
+# Case defaults live with the caller via flags; these mirror a US+Canada
+# scope. Greenhouse-style free text often has no country token ("Bellevue,
+# WA", "Remote") — that undercounted boards to 0 and silently excluded them
+# from the bulk scan — so match "Remote" and ", ST" state codes too. State
+# codes stay case-sensitive via inline groups ((?!UK) excludes the one common
+# two-letter false positive), mirroring scans-side greenhouse semantics.
+DEFAULT_FILTER = r"(?i:\b(USA?|United States|Canada|Remote)\b)|, (?!UK)[A-Z]{2}\b"
 # Workday list rows are bare "City, ST" with no country (see the
 # job-description-scan CLAUDE.md gotcha), so match state/province codes too.
 DEFAULT_WORKDAY_FILTER = r", [A-Z]{2}\b|United States|Canada|\bRemote\b"
@@ -189,7 +194,9 @@ def main() -> None:
     ap.add_argument("--workers", type=int, default=12)
     args = ap.parse_args()
 
-    pattern = re.compile(args.location_filter, re.IGNORECASE)
+    # No global IGNORECASE: the default's ", ST" state codes must stay
+    # case-sensitive; case-insensitive parts use inline (?i:) groups.
+    pattern = re.compile(args.location_filter)
     workday_pattern = re.compile(args.workday_location_filter)
 
     rows = list(csv.DictReader(open(args.companies)))
