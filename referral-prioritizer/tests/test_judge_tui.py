@@ -35,6 +35,19 @@ def _company_card(name="Acme"):
     }
 
 
+def test_window_lines_slides_with_cursor():
+    from referral_prioritizer.judge_tui import window_lines
+
+    lines = [f"L{i}" for i in range(100)]
+    assert window_lines(lines, 5, 200) == lines  # fits: untouched
+    top = window_lines(lines, 0, 10)
+    assert top[0] == "L0" and "below" in top[-1] and len(top) == 10
+    mid = window_lines(lines, 50, 10)
+    assert "above" in mid[0] and "below" in mid[-1] and "L50" in mid
+    bottom = window_lines(lines, 99, 10)
+    assert bottom[-1] == "L99" and "above" in bottom[0]
+
+
 def test_render_card_company_and_connection():
     text = render_card(_company_card())
     assert "Acme" in text and "theirstack" in text and "Jane Doe" in text

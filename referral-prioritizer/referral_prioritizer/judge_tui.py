@@ -25,6 +25,21 @@ from textual.containers import Horizontal
 from textual.widgets import Static
 
 
+def window_lines(lines: list[str], cursor_line: int, height: int) -> list[str]:
+    """Cursor-centered viewport over a line list, with overflow markers —
+    a Static has no scrolling, so long lists slide instead."""
+    if len(lines) <= height:
+        return lines
+    start = max(0, min(cursor_line - height // 2, len(lines) - height))
+    out = lines[start : start + height]
+    if start > 0:
+        out[0] = f"[dim]… {start} above[/dim]"
+    below = len(lines) - (start + height)
+    if below > 0:
+        out[-1] = f"[dim]… {below} below[/dim]"
+    return out
+
+
 def card_urls(card: dict) -> list[str]:
     """Every URL a card renders, in display order."""
     urls = []
@@ -238,16 +253,23 @@ class BrowseApp(App):
 
     def _show(self) -> None:
         rows = []
+        cursor_line = 0
         last_tier = None
         for i, (card, extra) in enumerate(self.entries):
             tier = (extra or {}).get("tier")
             if tier != last_tier:
                 rows.append(f"[b]— tier {tier or '?'} —[/b]")
                 last_tier = tier
+            if i == self.cursor:
+                cursor_line = len(rows)
             cur = ">" if i == self.cursor else " "
             rank = f"#{extra['rank']:<3}" if extra and "rank" in extra else "    "
             rows.append(f"{cur} {rank} {card['company']}")
-        self.query_one("#left", Static).update("\n".join(rows))
+        left = self.query_one("#left", Static)
+        height = max(5, (left.size.height or 40) - 2)  # panel padding
+        self.query_one("#left", Static).update(
+            "\n".join(window_lines(rows, cursor_line, height))
+        )
         card, extra = self.entries[self.cursor]
         self.query_one("#right", Static).update(render_card(card, extra))
         self.query_one("#status", Static).update(
