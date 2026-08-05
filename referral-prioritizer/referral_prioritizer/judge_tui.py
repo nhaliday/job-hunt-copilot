@@ -121,7 +121,7 @@ class Controller(Protocol):
 class JudgeApp(App):
     CSS = """
     Horizontal { height: 1fr; }
-    .panel { width: 1fr; border: solid $primary; padding: 1 2; }
+    .panel { width: 1fr; height: 1fr; border: solid $primary; padding: 1 2; }
     #status { dock: top; height: 1; background: $boost; }
     #help { dock: bottom; height: 1; color: $text-muted; }
     """
@@ -265,8 +265,10 @@ class BrowseApp(App):
             cur = ">" if i == self.cursor else " "
             rank = f"#{extra['rank']:<3}" if extra and "rank" in extra else "    "
             rows.append(f"{cur} {rank} {card['company']}")
-        left = self.query_one("#left", Static)
-        height = max(5, (left.size.height or 40) - 2)  # panel padding
+        # Measure the app (terminal), not the Static: an auto-height widget's
+        # size tracks its previous content, which feedback-spirals the window
+        # down to the floor. Chrome = status + help + border + padding.
+        height = max(5, self.size.height - 6)
         self.query_one("#left", Static).update(
             "\n".join(window_lines(rows, cursor_line, height))
         )
@@ -275,6 +277,9 @@ class BrowseApp(App):
         self.query_one("#status", Static).update(
             f"{self.cursor + 1}/{len(self.entries)}"
         )
+
+    def on_resize(self, event) -> None:
+        self._show()
 
     def on_key(self, event) -> None:
         if event.key == "q":
