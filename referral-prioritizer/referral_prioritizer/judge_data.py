@@ -93,9 +93,17 @@ def company_cards(
                 }
                 if s
                 else {},
-                "top_postings": [
-                    s[f"swe_top{i}"] for i in (1, 2, 3) if s.get(f"swe_top{i}")
-                ],
+                "role_tops": {
+                    rk: tops
+                    for rk in _ROLE_KEYS
+                    if (
+                        tops := [
+                            s[f"{rk}_top{i}"]
+                            for i in (1, 2, 3)
+                            if s.get(f"{rk}_top{i}")
+                        ]
+                    )
+                },
                 "referrers": sorted(
                     referrers.get(r["company"], []), key=lambda x: int(x["rank"])
                 )[:3],

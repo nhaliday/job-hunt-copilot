@@ -62,7 +62,7 @@ def test_company_cards_join(tmp_path):
     acme = cards["Acme"]
     assert acme["scan_source"] == "native"
     assert acme["tier_counts"]["swe"]["strong"] == "1"
-    assert acme["top_postings"] == ["Title A | https://x/1"]
+    assert acme["role_tops"] == {"swe": ["Title A | https://x/1"]}
     assert [r["name"] for r in acme["referrers"]] == [
         "Jane Doe",
         "John Roe",

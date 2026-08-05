@@ -50,17 +50,19 @@ def render_card(card: dict, extra: dict | None = None) -> str:
         lines.append(f"[dim]you know: {card['positions'][:100]}[/dim]")
     for ref in card.get("referrers", []):
         lines.append(f"  ref #{ref['rank']}: {ref['name']} — {ref['position'][:60]}")
-    tc = card.get("tier_counts") or {}
-    swe = tc.get("swe")
-    if swe and any(v not in ("", "0") for v in swe.values()):
-        lines.append(
-            "swe fit: "
-            + "  ".join(f"{t}={swe[t]}" for t in swe if swe[t] not in ("", "0"))
-        )
-    for i, top in enumerate(card.get("top_postings", []), 1):
-        title, _, url = (part.strip() for part in top.partition("|"))
-        shown = f"[link='{url}']{title}[/link]" if url else title
-        lines.append(f"  top{i}: {shown}")
+    for role, counts in (card.get("tier_counts") or {}).items():
+        if any(v not in ("", "0") for v in counts.values()):
+            lines.append(
+                f"{role} fit: "
+                + "  ".join(
+                    f"{t}={counts[t]}" for t in counts if counts[t] not in ("", "0")
+                )
+            )
+    for role, tops in (card.get("role_tops") or {}).items():
+        for i, top in enumerate(tops, 1):
+            title, _, url = (part.strip() for part in top.partition("|"))
+            shown = f"[link='{url}']{title}[/link]" if url else title
+            lines.append(f"  {role} top{i}: {shown}")
     if card.get("board_note"):
         lines.append(f"[dim]{card['board_note'][:160]}[/dim]")
     return "\n".join(lines)

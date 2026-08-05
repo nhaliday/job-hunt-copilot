@@ -31,7 +31,7 @@ def _company_card(name="Acme"):
         "tier_counts": {
             "swe": {"strong": "1", "stretch": "0", "long_shot": "0", "blocked": "0"}
         },
-        "top_postings": ["Title | https://x/1"],
+        "role_tops": {"swe": ["Title | https://x/1"]},
     }
 
 

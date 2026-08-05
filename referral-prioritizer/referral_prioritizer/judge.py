@@ -334,7 +334,9 @@ class RankController(_Controller):
                         "referrers": "; ".join(
                             r["name"] for r in card.get("referrers", [])
                         ),
-                        "top_posting": (card.get("top_postings") or [""])[0],
+                        "top_posting": (
+                            (card.get("role_tops") or {}).get("swe") or [""]
+                        )[0],
                     }
                 )
         judge_data.write_ranking(out_path, rows)
