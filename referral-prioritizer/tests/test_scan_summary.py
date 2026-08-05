@@ -82,7 +82,9 @@ def test_summary_includes_theirstack_enrichment_rows(tmp_path):
     )
     rows = {r["company"]: r for r in csv.DictReader(open(path))}
 
-    assert set(rows) == {"Acme", "Gamma Fund"}  # Delta: no artifact, no row
+    # Delta (unscannable, no artifact) gets no row; scannable Beta/Emptied
+    # get blank native rows under the membership rule even when unscanned.
+    assert set(rows) == {"Acme", "Beta", "Emptied", "Gamma Fund"}
     g = rows["Gamma Fund"]
     assert g["scan_source"] == "theirstack"
     assert g["board_kind"] == "custom"  # census provenance kept, not faked
