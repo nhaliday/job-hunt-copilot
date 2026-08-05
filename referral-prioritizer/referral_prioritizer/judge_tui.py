@@ -125,7 +125,7 @@ class JudgeApp(App):
                 rows.append(f"{cur} \\[{mark}] {opt['name']} — {opt['position'][:50]}")
             right.update("\n".join(rows))
             right.display = True
-            help_text = "j/k move · space toggle · enter commit · q quit"
+            help_text = "j/k move · space toggle · enter commit · u undo · q quit"
         else:  # tier
             left.update(render_card(p["card"]))
             right.display = False
@@ -142,10 +142,11 @@ class JudgeApp(App):
         if key == "q":
             self.exit()
             return
-        if key == "u" and p["mode"] != "select":
+        if key == "u":
             reshow = self.controller.undo()
             if reshow is not None:
                 self.payload = reshow
+                self.cursor, self.selected = 0, set()
                 self._show()
             return
         if p["mode"] == "compare" and key in ("a", "b", "t", "s"):
