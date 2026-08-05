@@ -205,7 +205,7 @@ class TierController(_Controller):
         self.key_map = {str(i + 1): name for i, name in enumerate(tier_names)}
         self.help = (
             " · ".join(f"{k}={v}" for k, v in self.key_map.items())
-            + " · x exclude · s skip · u undo · q quit"
+            + " · x exclude · s skip · u undo · o open · c copy · q quit"
         )
 
     def _build(self) -> None:

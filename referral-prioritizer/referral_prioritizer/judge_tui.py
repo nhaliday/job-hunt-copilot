@@ -8,14 +8,43 @@ renders the finished ranking with the same card.
 
 Keys — compare: a/b pick a side, t tie, s skip; select: j/k move, space
 toggle, enter commit; tier: 1/2/3 = A/B/C, x exclude, s skip; everywhere:
-u undo, q quit (resumable — the log has everything).
+u undo, q quit (resumable — the log has everything). Links render as OSC-8
+hyperlinks (clickable in iTerm2/Kitty/WezTerm/Ghostty; invisible in
+Terminal.app), so `o`/`O` open the current (left/right) card's first link in
+the default browser and `c` copies every visible URL — both work regardless
+of terminal (webbrowser + OSC-52-with-pbcopy-fallback).
 """
 
+import subprocess
+import sys
+import webbrowser
 from typing import Protocol
 
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal
 from textual.widgets import Static
+
+
+def card_urls(card: dict) -> list[str]:
+    """Every URL a card renders, in display order."""
+    urls = []
+    if card.get("url"):
+        urls.append(card["url"])
+    for tops in (card.get("role_tops") or {}).values():
+        for top in tops:
+            _, _, url = (part.strip() for part in top.partition("|"))
+            if url:
+                urls.append(url)
+    return urls
+
+
+def _copy_to_system_clipboard(app: App, text: str) -> None:
+    app.copy_to_clipboard(text)  # OSC 52 where the terminal supports it
+    if sys.platform == "darwin":  # Terminal.app doesn't; pbcopy always works
+        try:
+            subprocess.run(["pbcopy"], input=text.encode(), timeout=5)
+        except OSError:
+            pass
 
 
 def render_card(card: dict, extra: dict | None = None) -> str:
@@ -116,7 +145,9 @@ class JudgeApp(App):
             left.update("[b]\\[A][/b]\n\n" + render_card(p["left"]))
             right.update("[b]\\[B][/b]\n\n" + render_card(p["right"]))
             right.display = True
-            help_text = "a/b pick · t tie · s skip · u undo · q quit"
+            help_text = (
+                "a/b pick · t tie · s skip · u undo · o/O open link · c copy · q quit"
+            )
         elif p["mode"] == "select":
             left.update(render_card(p["card"]))
             self.cursor = min(self.cursor, len(p["options"]) - 1)
@@ -150,6 +181,18 @@ class JudgeApp(App):
                 self.payload = reshow
                 self.cursor, self.selected = 0, set()
                 self._show()
+            return
+        cards = [p["left"], p["right"]] if p["mode"] == "compare" else [p["card"]]
+        if key == "c":
+            urls = [u for c in cards for u in card_urls(c)]
+            if urls:
+                _copy_to_system_clipboard(self, "\n".join(urls))
+            return
+        if key in ("o", "O"):
+            target = cards[1] if key == "O" and len(cards) > 1 else cards[0]
+            urls = card_urls(target)
+            if urls:
+                webbrowser.open(urls[0])
             return
         if p["mode"] == "compare" and key in ("a", "b", "t", "s"):
             self.controller.answer(p, {"t": "tie", "s": "skip"}.get(key, key))
@@ -188,7 +231,7 @@ class BrowseApp(App):
         with Horizontal():
             yield Static("", id="left", classes="panel")
             yield Static("", id="right", classes="panel")
-        yield Static("j/k move · q quit", id="help")
+        yield Static("j/k move · o open link · c copy links · q quit", id="help")
 
     def on_mount(self) -> None:
         self._show()
@@ -220,3 +263,11 @@ class BrowseApp(App):
         elif event.key in ("k", "up"):
             self.cursor = max(self.cursor - 1, 0)
             self._show()
+        elif event.key in ("o", "c"):
+            urls = card_urls(self.entries[self.cursor][0])
+            if not urls:
+                return
+            if event.key == "o":
+                webbrowser.open(urls[0])
+            else:
+                _copy_to_system_clipboard(self, "\n".join(urls))
