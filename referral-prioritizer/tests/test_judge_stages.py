@@ -77,6 +77,30 @@ def test_tier_stage_resumes_and_derives(tmp_path):
     }
 
 
+def test_targeted_retier_corrects_one_company(tmp_path):
+    cards = [{"company": c} for c in ("Acme", "Beta", "Gamma")]
+    log = tmp_path / "tiers.jsonl"
+    ctl = TierController(log, cards, retier=False, tier_names=["A", "B", "C"])
+    for _ in range(3):
+        ctl.answer(ctl.next(), "1")  # everything tiered A
+    # Correct just Acme without revisiting the rest.
+    fix = TierController(
+        log, cards, retier=True, tier_names=["A", "B", "C"], only="acme"
+    )
+    p = fix.next()
+    assert p["_company"] == "Acme"
+    fix.answer(p, "2")
+    assert fix.next() is None  # nothing else queued
+    fix.derive(tmp_path / "tiers.csv")
+    from referral_prioritizer.judge_data import read_derived
+
+    assert {r["company"]: r["tier"] for r in read_derived(tmp_path / "tiers.csv")} == {
+        "Acme": "B",
+        "Beta": "A",
+        "Gamma": "A",
+    }
+
+
 def test_rank_stage_planted_recovery_and_no_repeats(tmp_path):
     companies = [f"C{i}" for i in range(8)]
     cards = [{"company": c} for c in companies]

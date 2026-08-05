@@ -196,10 +196,12 @@ class TierController(_Controller):
         cards: list[dict],
         retier: bool,
         tier_names: list[str],
+        only: str | None = None,
     ) -> None:
         super().__init__(log_path)
         self.cards = cards
         self.retier = retier
+        self.only = (only or "").lower()
         self.key_map = {str(i + 1): name for i, name in enumerate(tier_names)}
         self.help = (
             " · ".join(f"{k}={v}" for k, v in self.key_map.items())
@@ -208,7 +210,12 @@ class TierController(_Controller):
 
     def _build(self) -> None:
         tiers = judge_log.effective_tiers(judge_log.load(self.log_path))
-        todo = [c for c in self.cards if self.retier or c["company"] not in tiers]
+        todo = [
+            c
+            for c in self.cards
+            if (self.retier or c["company"] not in tiers)
+            and (not self.only or self.only in c["company"].lower())
+        ]
         for i, card in enumerate(todo):
             self.queue.append(
                 {
@@ -383,7 +390,10 @@ def main() -> None:
     )
     ap.add_argument("--tier", default="A", help="rank: which tier to compare")
     ap.add_argument("--rounds", type=int, help="rank: swiss rounds override")
-    ap.add_argument("--retier", action="store_true", help="tier: revisit all")
+    ap.add_argument(
+        "--retier", action="store_true", help="tier: revisit already-tiered"
+    )
+    ap.add_argument("--only", help="tier: substring filter on company name")
     ap.add_argument(
         "--derive-only", action="store_true", help="rebuild CSVs from logs, no UI"
     )
@@ -404,6 +414,7 @@ def main() -> None:
             cards,
             args.retier,
             [t.strip() for t in args.tiers.split(",") if t.strip()],
+            args.only,
         )
         if not args.derive_only:
             JudgeApp(ctl).run()
