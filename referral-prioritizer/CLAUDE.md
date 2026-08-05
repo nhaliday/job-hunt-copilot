@@ -101,6 +101,24 @@ pipeline is built in reviewable stages; implemented so far:
    verbatim. summary.csv rows carry `scan_source=theirstack` and `n_located` =
    the in-window index count — snapshots, not live boards.
 
+7. **Human-judge ranking** (`referral_prioritizer/judge.py` + `judge_tui.py`,
+   Textual) — the final referral ordering, from the user's own pairwise
+   judgments. Subcommands: `referrers` (per multi-connection company: shortlist
+   screen, then pairwise ordering of the shortlist → referrers.csv;
+   single-connection companies derive automatically), `tier` (pointwise-tier
+   every census company on the full enrichment card; tier names via
+   `--tiers A,B,C` mapped to keys 1..N, `x` excludes, `s` defers →
+   company-tiers.csv), `rank --tier A` (Swiss + Bradley-Terry within a tier on
+   two-card comparisons; reuses ranking.swiss_pairings/_resolve/choix →
+   company-ranking.csv), `browse` (walk the result on the same card). Every
+   judgment appends to a JSONL log under `--judgments-dir` (undo = a retraction
+   event; ties allowed and distinct from skips; skips are never re-asked) and
+   every derived CSV recomputes from the effective log — quitting mid-stage
+   loses nothing; `--derive-only` rebuilds artifacts without the UI. One card
+   component renders all four modes; posting and LinkedIn links are clickable
+   (OSC-8). Logs + derived CSVs are human-authored judgment: the consuming
+   project commits them.
+
 Side tool: **provider liveness panel**
 (`referral_prioritizer/provider_panel.py`) — measures job-data APIs (TheirStack,
 fantastic.jobs via Apify) against native-client ground truth: id-level

@@ -290,6 +290,31 @@ def _swiss_rounds(n: int, override: int | None) -> int:
     return override if override else math.ceil(math.log2(n)) + 2 if n > 1 else 1
 
 
+def swiss_pairings(
+    n: int,
+    score: list[float],
+    played: set[frozenset],
+    rng: random.Random,
+) -> list[tuple[int, int]]:
+    """One Swiss round: pair adjacent standings (random tiebreak), skipping
+    pairs already played. Mutates `played` with the pairings it emits. Shared
+    by the LLM tournament (run_ladder) and the human-judge driver."""
+    order = sorted(range(n), key=lambda i: (-score[i], rng.random()))
+    matchups: list[tuple[int, int]] = []
+    used: set[int] = set()
+    for i in order:
+        if i in used:
+            continue
+        for j in order:
+            if j == i or j in used or frozenset((i, j)) in played:
+                continue
+            matchups.append((i, j))
+            used.update((i, j))
+            played.add(frozenset((i, j)))
+            break
+    return matchups
+
+
 # --------------------------------------------------------------------------- #
 # 5 + 6. Aggregate → Bradley-Terry → ranked output
 # --------------------------------------------------------------------------- #
@@ -396,18 +421,7 @@ async def run_ladder(
             played: set[frozenset] = set()
             score = [0.0] * n
             for _ in range(_swiss_rounds(n, rounds)):
-                order = sorted(range(n), key=lambda i: (-score[i], rng.random()))
-                matchups, used = [], set()
-                for i in order:
-                    if i in used:
-                        continue
-                    for j in order:
-                        if j == i or j in used or frozenset((i, j)) in played:
-                            continue
-                        matchups.append((i, j))
-                        used.update((i, j))
-                        played.add(frozenset((i, j)))
-                        break
+                matchups = swiss_pairings(n, score, played, rng)
                 if not matchups:
                     break
                 directed = _directed(matchups, order_swap, rng)

@@ -136,3 +136,18 @@ def test_judge_errors_are_non_fatal():
 def test_noisy_judge_still_ranks_planted_best_first():
     ranked = _run(_cands(10), planted_judge(seed=1, noise=0.15))
     assert ranked[0]["posting_ids"][0] == "c00"
+
+
+def test_swiss_pairings_adjacent_and_no_repeats():
+    from job_description_scan.ranking import swiss_pairings
+
+    rng = random.Random(0)
+    played: set[frozenset] = set()
+    score = [3.0, 2.0, 1.0, 0.0]
+    first = swiss_pairings(4, score, played, rng)
+    assert sorted(sorted(p) for p in first) == [[0, 1], [2, 3]]  # adjacent standings
+    second = swiss_pairings(4, score, played, rng)
+    assert not (set(map(frozenset, first)) & set(map(frozenset, second)))
+    # 4 items -> 3 distinct rounds possible, then exhaustion
+    swiss_pairings(4, score, played, rng)
+    assert swiss_pairings(4, score, played, rng) == []
