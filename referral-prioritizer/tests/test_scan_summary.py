@@ -12,9 +12,11 @@ from job_description_scan.config import Ladder
 
 from referral_prioritizer.scan import Board, write_summary
 
-_CSV = """company,n_connections,board_kind,board_slug,n_postings_located
-Acme,5,greenhouse,acme,10
-Beta,2,ashby,beta,4
+_CSV = """company,n_connections,board_kind,board_slug,n_postings_located,n_postings_theirstack
+Acme,5,greenhouse,acme,10,
+Beta,2,ashby,beta,4,
+Gamma Fund,1,custom,,,42
+Delta,1,none,,,7
 """
 
 
@@ -47,8 +49,33 @@ def test_summary_covers_all_boards_even_without_artifacts(tmp_path):
     )
     rows = {r["company"]: r for r in csv.DictReader(open(path))}
 
-    assert set(rows) == {"Acme", "Beta"}  # Beta's row survives unscanned
+    assert set(rows) == {"Acme", "Beta"}  # Beta survives; no enriched rows yet
     assert rows["Acme"]["swe_strong"] == "1"
     assert rows["Acme"]["swe_blocked"] == "1"
+    assert rows["Acme"]["scan_source"] == "native"
     assert rows["Beta"]["n_scanned"] == ""  # blank counts, not dropped
     assert rows["Beta"]["n_located"] == "4"
+
+
+def test_summary_includes_theirstack_enrichment_rows(tmp_path):
+    companies = tmp_path / "companies.csv"
+    companies.write_text(_CSV)
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    boards = [Board(kind="greenhouse", slug="acme", label="Acme")]
+    # Gamma Fund has an enrichment artifact; Delta does not.
+    name = Board(kind="theirstack", slug="Gamma Fund", label="Gamma Fund").name
+    with open(out_dir / f"{name}.jsonl", "w") as f:
+        f.write(json.dumps(_result_row("9", "swe", "stretch")) + "\n")
+
+    path = write_summary(
+        companies, boards, [Ladder(roles=("swe",), label="swe")], out_dir
+    )
+    rows = {r["company"]: r for r in csv.DictReader(open(path))}
+
+    assert set(rows) == {"Acme", "Gamma Fund"}  # Delta: no artifact, no row
+    g = rows["Gamma Fund"]
+    assert g["scan_source"] == "theirstack"
+    assert g["board_kind"] == "custom"  # census provenance kept, not faked
+    assert g["n_located"] == "42"  # the theirstack in-window count
+    assert g["swe_stretch"] == "1"

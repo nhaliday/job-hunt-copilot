@@ -32,6 +32,25 @@ def fetch_by_walk(client: BoardClient, ids: Iterable[str]) -> Iterable[Posting]:
     return (p for p in client.iter_postings() if p.id in wanted)
 
 
+class StaticClient:
+    """In-memory BoardClient over pre-fetched postings (cached API pulls,
+    tests). Serving from memory keeps paid/non-idempotent sources out of the
+    client protocol: the pull happens once, upstream, and everything the
+    pipeline does with the client stays free and repeatable."""
+
+    def __init__(self, postings: Iterable[Posting]) -> None:
+        self._postings = list(postings)
+
+    def iter_postings(self) -> Iterable[Posting]:
+        return iter(self._postings)
+
+    def fetch_postings(self, ids: Iterable[str]) -> Iterable[Posting]:
+        return fetch_by_walk(self, ids)
+
+    def index(self) -> dict[str, Posting]:
+        return {p.id: p for p in self._postings}
+
+
 class _Stripper(HTMLParser):
     def __init__(self) -> None:
         super().__init__()

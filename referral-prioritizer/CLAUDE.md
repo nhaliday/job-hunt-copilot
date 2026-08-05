@@ -84,6 +84,23 @@ pipeline is built in reviewable stages; implemented so far:
    `--only <substr>`, `--limit-rows`, `--sample`, `--dry-run` (row count +
    credit estimate, no HTTP).
 
+6. **TheirStack enrichment** (`referral_prioritizer/enrich.py`) — scans +
+   rankings for census companies with NO scannable board, from TheirStack index
+   pulls. Pull-once/compute-offline: each selected company's postings are pulled
+   once (`theirstack-<slug>.raw.jsonl`, verbatim rows incl. LinkedIn URLs;
+   per-company atomic billing since TheirStack checks the full credit price
+   upfront; .partial→rename; cached pulls are skipped, so running out of credits
+   parks the rest until the next run) and every downstream stage reads the cache
+   through the engine's `StaticClient` — re-running extraction/ranking costs no
+   credits. Selection: tail board_kinds with 0 < n_postings_theirstack <=
+   `--max-postings` (default 1000; megacorp exclusion), minus `--exclude` name
+   substrings, ordered (-n_connections, +count). Extraction uses the factory's
+   workday-kind config (location_filter=None; the prefilter's geography clause
+   cuts the free-text locations); rows whose `company` mismatches the census row
+   are dropped at load time (ambiguous-name guard). Ranking reuses `_rank_board`
+   verbatim. summary.csv rows carry `scan_source=theirstack` and `n_located` =
+   the in-window index count — snapshots, not live boards.
+
 Side tool: **provider liveness panel**
 (`referral_prioritizer/provider_panel.py`) — measures job-data APIs (TheirStack,
 fantastic.jobs via Apify) against native-client ground truth: id-level

@@ -116,6 +116,9 @@ LLM, so use them to guide extraction at the field level.
 - **Board fetch**: `boards/<kind>.py` → `Posting` dataclass. No deterministic
   title filtering; every posting flows to the LLM unless excluded by an optional
   `location_filter` or the optional cheap-model `prefilter` (see below).
+  `StaticClient` (boards/**init**.py) is an in-memory `BoardClient` over
+  pre-fetched postings — for cached API pulls (paid sources must never hide
+  behind `iter_postings`) and tests.
 - **LLM pipeline**: `pipeline.py` builds a cached system prompt (instructions +
   schema + reference docs + optional resume), then issues a single composed-
   schema `client.messages.parse(...)` call per posting.

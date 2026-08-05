@@ -10,6 +10,7 @@ import httpx
 import pytest
 import respx
 
+from job_description_scan.boards import Posting, StaticClient
 from job_description_scan.boards.ashby import AshbyClient
 from job_description_scan.boards.greenhouse import GreenhouseClient
 from job_description_scan.boards.lever import LeverClient
@@ -70,6 +71,18 @@ def test_greenhouse_fetch_postings_is_filtered_walk(respx_mock):
     got = list(GreenhouseClient("acme").fetch_postings(["102", "999"]))
     assert [p.id for p in got] == ["102"]  # unknown id absent, not an error
     assert route.call_count == 1
+
+
+def test_static_client():
+    def p(i):
+        return Posting(
+            id=i, title=f"T{i}", location="X", content_text="c", url="", raw={}
+        )
+
+    client = StaticClient([p("1"), p("2")])
+    assert [x.id for x in client.iter_postings()] == ["1", "2"]
+    assert [x.id for x in client.fetch_postings(["2", "9"])] == ["2"]
+    assert set(client.index()) == {"1", "2"}
 
 
 @respx.mock(assert_all_called=False)

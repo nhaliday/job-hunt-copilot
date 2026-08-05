@@ -38,6 +38,7 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Protocol
 
 from job_description_scan.boards import Posting, make_client
 from job_description_scan.config import Ladder, Scan
@@ -206,9 +207,13 @@ async def _scan_board(
     print(line, flush=True)
 
 
+class _HasIndex(Protocol):
+    def index(self) -> dict[str, Posting]: ...
+
+
 def _rank_board(
     board: Board,
-    client: _CachingClient,
+    client: _HasIndex,
     ladders: list[Ladder],
     args: argparse.Namespace,
     out_path: Path,
@@ -341,6 +346,7 @@ def write_summary(
         "n_connections",
         "board_kind",
         "board_slug",
+        "scan_source",
         "n_located",
         "n_scanned",
         "n_precut",
@@ -351,47 +357,72 @@ def write_summary(
         fields += [f"{rk}_{t}" for t in tiers]
         fields += [f"{rk}_top{i}" for i in (1, 2, 3)]
 
+    def artifact_fields(name: str) -> dict:
+        """Tier counts + top-3 from a scan artifact `<name>.jsonl` (plus its
+        -dropped / -rank siblings); {} if the artifact doesn't exist."""
+        out_path = out_dir / f"{name}.jsonl"
+        if not out_path.exists():
+            return {}
+        results = [x for x in _read_results(out_path) if "result" in x]
+        dropped_path = out_dir / f"{name}-dropped.jsonl"
+        drops = (
+            Counter(x.get("_filter_stage", "") for x in _read_results(dropped_path))
+            if dropped_path.exists()
+            else Counter()
+        )
+        row: dict = {
+            "n_scanned": len(results),
+            "n_precut": drops["title_precut"],
+            "n_prefiltered": drops["prefilter"],
+        }
+        for ladder, rk in zip(ladders, role_keys):
+            counted = Counter(
+                x["result"]["comparison"]["fit_tier"]
+                for x in results
+                if x["result"]["extraction"].get("role") in ladder.roles
+                and "comparison" in x["result"]
+            )
+            for t in tiers:
+                row[f"{rk}_{t}"] = counted[t]
+            rank_path = out_dir / f"{name}-rank-{rk}.jsonl"
+            top = _top3(out_path, rank_path, ladder)
+            for i in (1, 2, 3):
+                row[f"{rk}_top{i}"] = top[i - 1] if len(top) >= i else ""
+        return row
+
     out_rows = []
     with open(companies_csv, newline="") as f:
         for r in csv.DictReader(f):
             board = by_key.get((r.get("board_kind", ""), r.get("board_slug", "")))
-            if board is None:
+            if board is not None:
+                row = {
+                    "company": r["company"],
+                    "n_connections": r["n_connections"],
+                    "board_kind": board.kind,
+                    "board_slug": board.slug,
+                    "scan_source": "native",
+                    "n_located": r.get("n_postings_located", ""),
+                    **artifact_fields(board.name),
+                }
+                out_rows.append(row)
                 continue
-            out_path = out_dir / f"{board.name}.jsonl"
-            row = {
-                "company": r["company"],
-                "n_connections": r["n_connections"],
-                "board_kind": board.kind,
-                "board_slug": board.slug,
-                "n_located": r.get("n_postings_located", ""),
-            }
-            if out_path.exists():
-                results = [x for x in _read_results(out_path) if "result" in x]
-                dropped_path = out_dir / f"{board.name}-dropped.jsonl"
-                drops = (
-                    Counter(
-                        x.get("_filter_stage", "") for x in _read_results(dropped_path)
-                    )
-                    if dropped_path.exists()
-                    else Counter()
+            # No native board: a theirstack enrichment artifact (written by
+            # enrich.py under the same naming scheme) still earns a summary
+            # row — same columns, provenance flagged.
+            name = Board(kind="theirstack", slug=r["company"], label=r["company"]).name
+            enriched = artifact_fields(name)
+            if enriched:
+                out_rows.append(
+                    {
+                        "company": r["company"],
+                        "n_connections": r["n_connections"],
+                        "board_kind": r.get("board_kind", ""),
+                        "board_slug": r.get("board_slug", ""),
+                        "scan_source": "theirstack",
+                        "n_located": r.get("n_postings_theirstack", ""),
+                        **enriched,
+                    }
                 )
-                row["n_scanned"] = len(results)
-                row["n_precut"] = drops["title_precut"]
-                row["n_prefiltered"] = drops["prefilter"]
-                for ladder, rk in zip(ladders, role_keys):
-                    counted = Counter(
-                        x["result"]["comparison"]["fit_tier"]
-                        for x in results
-                        if x["result"]["extraction"].get("role") in ladder.roles
-                        and "comparison" in x["result"]
-                    )
-                    for t in tiers:
-                        row[f"{rk}_{t}"] = counted[t]
-                    rank_path = out_dir / f"{board.name}-rank-{rk}.jsonl"
-                    top = _top3(out_path, rank_path, ladder)
-                    for i in (1, 2, 3):
-                        row[f"{rk}_top{i}"] = top[i - 1] if len(top) >= i else ""
-            out_rows.append(row)
 
     path = out_dir / "summary.csv"
     with open(path, "w", newline="") as f:
