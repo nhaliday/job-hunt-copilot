@@ -13,6 +13,7 @@ BoardKind = Literal[
     "smartrecruiters",
     "phenom",
     "eightfold",
+    "pinpoint",
 ]
 
 

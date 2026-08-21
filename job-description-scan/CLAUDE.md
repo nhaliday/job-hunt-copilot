@@ -65,9 +65,12 @@ resume.
 2. Edit the `Extraction` and (optional) `Comparison` Pydantic classes to match
    the role family you want to characterize
 3. Edit the `scan = Scan(...)` block: source board (`greenhouse`, `ashby`,
-   `lever`, `workday`, `smartrecruiters`, `phenom`, or `eightfold` — all seven
-   implemented), slug, model. Slug formats: the big three use the board's URL
-   slug; `workday` uses `"hostprefix/site"` (e.g. `"acme.wd5/Acme_Careers"`; a
+   `lever`, `workday`, `smartrecruiters`, `phenom`, `eightfold`, or `pinpoint` —
+   all eight implemented), slug, model. Slug formats: the big three use the
+   board's URL slug; `pinpoint` uses the tenant subdomain of
+   `<tenant>.pinpointhq.com` (one-shot: verify with
+   `curl https://<tenant>.pinpointhq.com/postings.json` — a wrong tenant 404s);
+   `workday` uses `"hostprefix/site"` (e.g. `"acme.wd5/Acme_Careers"`; a
    hostprefix containing `.myworkday` is taken as a full host, covering
    `myworkdaysite.com` tenants); `smartrecruiters` uses the API company
    identifier, which sometimes differs from the careers-site slug — a wrong
@@ -126,8 +129,7 @@ LLM, so use them to guide extraction at the field level.
 
 Per-scan inputs (`config.Scan`):
 
-- `source`: `BoardSource(kind, slug)` —
-  Greenhouse/Ashby/Lever/Workday/SmartRecruiters
+- `source`: `BoardSource(kind, slug)` — any kind in `config.BoardKind`
 - `extraction`: Pydantic class for JD-only facts (always populated)
 - `comparison`: optional Pydantic class for fit/gap fields (populated when
   `--resume` provided)

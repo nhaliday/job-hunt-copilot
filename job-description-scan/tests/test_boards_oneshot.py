@@ -1,6 +1,6 @@
 """Fixture-replay tests for the one-shot board clients (greenhouse, ashby,
-lever): the full listing arrives in one request; fetch_postings is derived
-from the walk via fetch_by_walk.
+lever, pinpoint): the full listing arrives in one request; fetch_postings is
+derived from the walk via fetch_by_walk.
 
 Synthetic payloads mirror the real response shapes (placeholder names only —
 this repo holds no personal data). respx intercepts all HTTP: no network.
@@ -14,6 +14,7 @@ from job_description_scan.boards import Posting, StaticClient
 from job_description_scan.boards.ashby import AshbyClient
 from job_description_scan.boards.greenhouse import GreenhouseClient
 from job_description_scan.boards.lever import LeverClient
+from job_description_scan.boards.pinpoint import PinpointClient
 
 _GH = dict(host="boards-api.greenhouse.io", path="/v1/boards/acme/jobs")
 
@@ -154,3 +155,62 @@ def test_lever_parse(respx_mock):
     assert tagged.content_text == "About the role.\n\nBenefits\nSnacks\n\nExtra note."
     assert untagged.location == "Somewhere"
     assert untagged.content_text == ""
+
+
+@respx.mock(assert_all_called=False)
+def test_pinpoint_parse(respx_mock):
+    respx_mock.get(host="acme.pinpointhq.com", path="/postings.json").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "id": "500001",
+                        "title": "Software Engineer",
+                        "description": "<div>Build things.</div>",
+                        "key_responsibilities": "<li>Ship</li>",
+                        "key_responsibilities_header": "Key Responsibilities",
+                        "skills_knowledge_expertise": "<li>Python</li>",
+                        "skills_knowledge_expertise_header": "Skills",
+                        "benefits": "",
+                        "benefits_header": "Job Benefits",
+                        "compensation": "$100,000 - $150,000 / year",
+                        "compensation_visible": True,
+                        "workplace_type_text": "Hybrid",
+                        "location": {"name": "Anytown, ST"},
+                        "url": "https://acme.pinpointhq.com/en/postings/uuid-1",
+                        "job": {"requisition_id": "PIN-0001"},
+                    },
+                    # Minimal row: sections empty, comp hidden, no location.
+                    {
+                        "id": "500002",
+                        "title": "Minimal Role",
+                        "compensation": "$1 / year",
+                        "compensation_visible": False,
+                        "workplace_type_text": "",
+                        "location": None,
+                    },
+                ]
+            },
+        )
+    )
+    full, minimal = PinpointClient("acme").iter_postings()
+    assert full.id == "500001"
+    assert full.location == "Anytown, ST [Hybrid]"
+    assert full.content_text == (
+        "Build things.\n\nKey Responsibilities\nShip\n\nSkills\nPython"
+        "\n\nCompensation: $100,000 - $150,000 / year"
+    )
+    assert full.url == "https://acme.pinpointhq.com/en/postings/uuid-1"
+    assert minimal.location == ""
+    assert minimal.content_text == ""
+
+
+@respx.mock(assert_all_called=False)
+def test_pinpoint_wrong_tenant_fails_loud(respx_mock):
+    # An unknown tenant subdomain answers 404, not an empty listing.
+    respx_mock.get(host="acme.pinpointhq.com", path="/postings.json").mock(
+        return_value=httpx.Response(404)
+    )
+    with pytest.raises(httpx.HTTPStatusError):
+        list(PinpointClient("acme").iter_postings())

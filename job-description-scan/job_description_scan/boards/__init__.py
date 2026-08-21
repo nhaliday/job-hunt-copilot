@@ -84,6 +84,7 @@ def make_client(
     from .greenhouse import GreenhouseClient
     from .lever import LeverClient
     from .phenom import PhenomClient
+    from .pinpoint import PinpointClient
     from .smartrecruiters import SmartRecruitersClient
     from .workday import WorkdayClient
 
@@ -93,6 +94,8 @@ def make_client(
         return AshbyClient(source.slug)
     if source.kind == "lever":
         return LeverClient(source.slug)
+    if source.kind == "pinpoint":
+        return PinpointClient(source.slug)
     # List-then-detail boards: content costs one GET per posting, so only these
     # clients take the location filter — to skip detail fetches for postings
     # that can't match. Semantics are unchanged: every posting is still
