@@ -14,6 +14,7 @@ BoardKind = Literal[
     "phenom",
     "eightfold",
     "pinpoint",
+    "manatal",
 ]
 
 

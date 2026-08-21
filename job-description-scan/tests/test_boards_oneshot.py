@@ -1,6 +1,7 @@
 """Fixture-replay tests for the one-shot board clients (greenhouse, ashby,
-lever, pinpoint): the full listing arrives in one request; fetch_postings is
-derived from the walk via fetch_by_walk.
+lever, pinpoint, manatal): the full listing arrives in one request (or one
+cheap paginated walk); fetch_postings is derived from the walk via
+fetch_by_walk.
 
 Synthetic payloads mirror the real response shapes (placeholder names only —
 this repo holds no personal data). respx intercepts all HTTP: no network.
@@ -14,6 +15,7 @@ from job_description_scan.boards import Posting, StaticClient
 from job_description_scan.boards.ashby import AshbyClient
 from job_description_scan.boards.greenhouse import GreenhouseClient
 from job_description_scan.boards.lever import LeverClient
+from job_description_scan.boards.manatal import ManatalClient
 from job_description_scan.boards.pinpoint import PinpointClient
 
 _GH = dict(host="boards-api.greenhouse.io", path="/v1/boards/acme/jobs")
@@ -214,3 +216,77 @@ def test_pinpoint_wrong_tenant_fails_loud(respx_mock):
     )
     with pytest.raises(httpx.HTTPStatusError):
         list(PinpointClient("acme").iter_postings())
+
+
+@respx.mock(assert_all_called=False)
+def test_manatal_parse_and_pagination(respx_mock):
+    # Page 1 on api.manatal.com; `next` hops to core.api.manatal.com and must
+    # be followed verbatim.
+    respx_mock.get(host="api.manatal.com", path="/open/v3/career-page/acme/jobs/").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "count": 2,
+                "next": "https://core.api.manatal.com/open/v3/career-page/acme/jobs/?page=2",
+                "results": [
+                    {
+                        "id": 1001,
+                        "hash": "5W8AAAAA",
+                        "position_name": "Flight Software Engineer",
+                        "location_display": "Anytown, California, United States",
+                        "is_remote": None,
+                        "description": "<p>Write flight code.</p>",
+                        "salary_min": "150000.00",
+                        "salary_max": "200000.00",
+                        "currency_code": "USD",
+                        "is_salary_visible": True,
+                    }
+                ],
+            },
+        )
+    )
+    respx_mock.get(
+        host="core.api.manatal.com",
+        path="/open/v3/career-page/acme/jobs/",
+        params={"page": "2"},
+    ).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "count": 2,
+                "next": None,
+                "results": [
+                    {
+                        "id": 1002,
+                        "hash": "5W8BBBBB",
+                        "position_name": "Remote Role",
+                        "location_display": "Anytown, Texas, United States",
+                        "is_remote": True,
+                        "description": "",
+                        "salary_min": "1.00",
+                        "salary_max": "2.00",
+                        "currency_code": "USD",
+                        "is_salary_visible": False,
+                    }
+                ],
+            },
+        )
+    )
+    first, second = ManatalClient("acme").iter_postings()
+    assert first.id == "1001"
+    assert first.location == "Anytown, California, United States"
+    assert first.content_text == (
+        "Write flight code.\n\nSalary: 150000.00 - 200000.00 USD"
+    )
+    assert first.url == "https://www.careers-page.com/acme/job/5W8AAAAA"
+    assert second.location == "Anytown, Texas, United States [Remote]"
+    assert second.content_text == ""  # hidden salary stays out of content
+
+
+@respx.mock(assert_all_called=False)
+def test_manatal_wrong_slug_fails_loud(respx_mock):
+    respx_mock.get(host="api.manatal.com", path="/open/v3/career-page/acme/jobs/").mock(
+        return_value=httpx.Response(404)
+    )
+    with pytest.raises(httpx.HTTPStatusError):
+        list(ManatalClient("acme").iter_postings())

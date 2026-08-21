@@ -83,6 +83,7 @@ def make_client(
     from .eightfold import EightfoldClient
     from .greenhouse import GreenhouseClient
     from .lever import LeverClient
+    from .manatal import ManatalClient
     from .phenom import PhenomClient
     from .pinpoint import PinpointClient
     from .smartrecruiters import SmartRecruitersClient
@@ -96,6 +97,8 @@ def make_client(
         return LeverClient(source.slug)
     if source.kind == "pinpoint":
         return PinpointClient(source.slug)
+    if source.kind == "manatal":
+        return ManatalClient(source.slug)
     # List-then-detail boards: content costs one GET per posting, so only these
     # clients take the location filter — to skip detail fetches for postings
     # that can't match. Semantics are unchanged: every posting is still

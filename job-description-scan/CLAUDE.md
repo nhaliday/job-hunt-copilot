@@ -65,19 +65,21 @@ resume.
 2. Edit the `Extraction` and (optional) `Comparison` Pydantic classes to match
    the role family you want to characterize
 3. Edit the `scan = Scan(...)` block: source board (`greenhouse`, `ashby`,
-   `lever`, `workday`, `smartrecruiters`, `phenom`, `eightfold`, or `pinpoint` —
-   all eight implemented), slug, model. Slug formats: the big three use the
-   board's URL slug; `pinpoint` uses the tenant subdomain of
+   `lever`, `workday`, `smartrecruiters`, `phenom`, `eightfold`, `pinpoint`, or
+   `manatal` — all nine implemented), slug, model. Slug formats: the big three
+   use the board's URL slug; `pinpoint` uses the tenant subdomain of
    `<tenant>.pinpointhq.com` (one-shot: verify with
    `curl https://<tenant>.pinpointhq.com/postings.json` — a wrong tenant 404s);
-   `workday` uses `"hostprefix/site"` (e.g. `"acme.wd5/Acme_Careers"`; a
-   hostprefix containing `.myworkday` is taken as a full host, covering
-   `myworkdaysite.com` tenants); `smartrecruiters` uses the API company
-   identifier, which sometimes differs from the careers-site slug — a wrong
-   identifier returns `totalFound: 0` and the client raises on it, so verify
-   with `curl https://api.smartrecruiters.com/v1/companies/<id>/postings` first;
-   `phenom` uses the branded careers-site host (e.g. `"careers.acme.org"` —
-   verify it's really Phenom with
+   `manatal` uses the careers-page.com portal slug (paginated one-shot: verify
+   with `curl https://api.manatal.com/open/v3/career-page/<slug>/jobs/` — a
+   wrong slug 404s); `workday` uses `"hostprefix/site"` (e.g.
+   `"acme.wd5/Acme_Careers"`; a hostprefix containing `.myworkday` is taken as a
+   full host, covering `myworkdaysite.com` tenants); `smartrecruiters` uses the
+   API company identifier, which sometimes differs from the careers-site slug —
+   a wrong identifier returns `totalFound: 0` and the client raises on it, so
+   verify with `curl https://api.smartrecruiters.com/v1/companies/<id>/postings`
+   first; `phenom` uses the branded careers-site host (e.g. `"careers.acme.org"`
+   — verify it's really Phenom with
    `curl -X POST https://<host>/widgets -H 'Content-Type: application/json' -d '{"ddoKey":"refineSearch","from":0,"size":1,"jobs":true}'`;
    the client raises on 0 postings); `eightfold` uses `"host/domain"` (e.g.
    `"searchcareers.acme.com/acme.com"` — the careers host plus the `domain`
