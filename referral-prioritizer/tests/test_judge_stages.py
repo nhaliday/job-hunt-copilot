@@ -130,3 +130,31 @@ def test_rank_stage_planted_recovery_and_no_repeats(tmp_path):
     n = len(rows)
     d2 = sum((i - int(r["company"][1:])) ** 2 for i, r in enumerate(rows))
     assert 1 - 6 * d2 / (n * (n**2 - 1)) >= 0.8
+
+
+def test_rank_stage_certification_heading_and_until_stable(tmp_path, capsys):
+    companies = [f"C{i}" for i in range(8)]
+    cards = [{"company": c} for c in companies]
+    tiers = {c: "A" for c in companies}
+    log = tmp_path / "ranking.jsonl"
+    ctl = RankController(
+        log, cards, "A", tiers, rounds=None, topk=[3], until_stable=True
+    )
+    seen_stability = False
+    count = 0
+    while (p := ctl.next()) is not None:
+        seen_stability |= "top-k stable:" in p["heading"]
+        ctl.answer(p, "a" if p["_a"] < p["_b"] else "b")  # planted: C0 best
+        count += 1
+    assert seen_stability, "status line must carry the certification readout"
+    assert count < ctl.target, "closure certification must end the stage early"
+
+    # Certified pool: a fresh until-stable controller schedules nothing more,
+    # and derive reports the certification alongside the CSV.
+    ctl2 = RankController(
+        log, cards, "A", tiers, rounds=None, topk=[3], until_stable=True
+    )
+    assert ctl2.next() is None
+    ctl2.derive(tmp_path / "company-ranking.csv")
+    out = capsys.readouterr().out
+    assert "tier A:" in out and "k3=1.00✓" in out

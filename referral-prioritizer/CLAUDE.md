@@ -110,14 +110,19 @@ pipeline is built in reviewable stages; implemented so far:
    `--tiers A,B,C` mapped to keys 1..N, `x` excludes, `s` defers →
    company-tiers.csv), `rank --tier A` (Swiss + Bradley-Terry within a tier on
    two-card comparisons; reuses ranking.swiss_pairings/_resolve/choix →
-   company-ranking.csv), `browse` (walk the result on the same card). Every
-   judgment appends to a JSONL log under `--judgments-dir` (undo = a retraction
-   event; ties allowed and distinct from skips; skips are never re-asked) and
-   every derived CSV recomputes from the effective log — quitting mid-stage
-   loses nothing; `--derive-only` rebuilds artifacts without the UI. One card
-   component renders all four modes; posting and LinkedIn links are clickable
-   (OSC-8). Logs + derived CSVs are human-authored judgment: the consuming
-   project commits them.
+   company-ranking.csv; the status line tracks top-k certification for
+   `--topk 5,10,20` prefixes via ranking.closure_topk — coverage of
+   top-vs-outside pairs by transitive judgment paths, with a
+   comparisons-still-needed estimate; pairing never depends on k, so quitting
+   once your k reads ✓ is the intended early exit and `--until-stable` automates
+   it; derive re-prints the readout), `browse` (walk the result on the same
+   card). Every judgment appends to a JSONL log under `--judgments-dir` (undo =
+   a retraction event; ties allowed and distinct from skips; skips are never
+   re-asked) and every derived CSV recomputes from the effective log — quitting
+   mid-stage loses nothing; `--derive-only` rebuilds artifacts without the UI.
+   One card component renders all four modes; posting and LinkedIn links are
+   clickable (OSC-8). Logs + derived CSVs are human-authored judgment: the
+   consuming project commits them.
 
 Side tool: **provider liveness panel**
 (`referral_prioritizer/provider_panel.py`) — measures job-data APIs (TheirStack,

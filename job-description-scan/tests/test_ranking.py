@@ -151,3 +151,105 @@ def test_swiss_pairings_adjacent_and_no_repeats():
     # 4 items -> 3 distinct rounds possible, then exhaustion
     swiss_pairings(4, score, played, rng)
     assert swiss_pairings(4, score, played, rng) == []
+
+
+def _bt_units(n: int, utilities: list[float], m: int, seed: int = 0) -> list:
+    """Synthetic judgment units sampled from a Bradley-Terry model over
+    random pairs — planted ground truth for the stability monitor."""
+    rng = random.Random(seed)
+    units = []
+    for _ in range(m):
+        i, j = rng.sample(range(n), 2)
+        p_i = 1 / (1 + pow(2.718281828, utilities[j] - utilities[i]))
+        w = i if rng.random() < p_i else j
+        units.append([{"a": i, "b": j, "winner": w}])
+    return units
+
+
+def test_topk_stability_separates_clear_top_from_mush():
+    from job_description_scan.ranking import STABLE_AT, topk_stability
+
+    # Items 0-2 tower over a near-tied tail: k=3 resolves fast, k=6 can't.
+    utils = [8.0, 7.0, 6.0] + [0.05 * i for i in range(9)][::-1]
+    stats = topk_stability(12, _bt_units(12, utils, 300), [3, 6])
+    by_k = {s["k"]: s for s in stats}
+    assert by_k[3]["stability"] >= STABLE_AT and by_k[3]["est_more"] == 0
+    assert by_k[6]["stability"] < STABLE_AT
+    assert by_k[6]["est_more"] is None or by_k[6]["est_more"] >= 1
+
+
+def test_topk_stability_clamps_and_handles_empty():
+    from job_description_scan.ranking import topk_stability
+
+    units = _bt_units(4, [3.0, 2.0, 1.0, 0.0], 60)
+    # k >= n and k <= 0 are dropped; duplicates collapse.
+    assert [s["k"] for s in topk_stability(4, units, [0, 2, 2, 4, 9])] == [2]
+    assert topk_stability(4, [], [2]) == [
+        {"k": 2, "stability": 0.0, "est_more": None, "stable": False}
+    ]
+
+
+def test_topk_stability_is_deterministic():
+    from job_description_scan.ranking import topk_stability
+
+    units = _bt_units(8, [float(8 - i) for i in range(8)], 100)
+    assert topk_stability(8, units, [3]) == topk_stability(8, units, [3])
+
+
+def test_until_stable_stops_swiss_early(capsys):
+    n = 16
+    ranked = _run_kw(
+        _cands(n), planted_judge(), schedule="swiss", topk=[1], until_stable=True
+    )
+    full = _run_kw(_cands(n), planted_judge(), schedule="swiss")
+    spent = sum(r["comparisons"] for r in ranked)
+    assert spent < sum(r["comparisons"] for r in full), "early stop must save calls"
+    assert ranked[0]["posting_ids"][0] == "c00"
+    assert "top-k stable:" in capsys.readouterr().out
+
+
+def _run_kw(cands, judge, schedule="round-robin", **kw):
+    return asyncio.run(
+        run_ladder(
+            cands,
+            resume_text="",
+            label="",
+            model="unused-with-injected-judge",
+            schedule=schedule,
+            rounds=None,
+            order_swap=True,
+            concurrency=8,
+            judge=judge,
+            **kw,
+        )
+    )
+
+
+def test_closure_topk_transitive_chain_certifies():
+    from job_description_scan.ranking import closure_topk
+
+    # A judged adjacent chain 0>1>...>5 certifies every prefix transitively.
+    chain = [[{"a": i, "b": i + 1, "winner": i}] for i in range(5)]
+    stats = closure_topk(6, chain, [1, 3])
+    assert all(s["stable"] and s["est_more"] == 0 for s in stats)
+
+
+def test_closure_topk_missing_links_are_counted():
+    from job_description_scan.ranking import closure_topk
+
+    units = [[{"a": 0, "b": 1, "winner": 0}], [{"a": 2, "b": 3, "winner": 2}]]
+    (s,) = closure_topk(4, units, [1])
+    assert not s["stable"] and 0 < s["stability"] < 1
+    assert s["est_more"] >= 1
+
+
+def test_closure_topk_tie_covers_both_directions():
+    from job_description_scan.ranking import closure_topk
+
+    units = [
+        [{"a": 0, "b": 1, "winner": 0}, {"a": 0, "b": 1, "winner": 1}],  # tie
+        [{"a": 1, "b": 2, "winner": 1}],
+        [{"a": 0, "b": 2, "winner": 0}],
+    ]
+    (s,) = closure_topk(3, units, [1])
+    assert s["stable"], "a boundary tie certifies either membership"

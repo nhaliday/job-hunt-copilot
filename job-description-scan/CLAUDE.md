@@ -247,6 +247,9 @@ uv run python -m job_description_scan.ranking \
 #   --judge-model …         # default claude-opus-5; override for pricier tiers
 #   --dedup-threshold 90    # opt into fuzzy dedup merging (see Mechanics);
 #                           # default: only string-identical cores merge
+#   --topk 5,10,20          # report bootstrap top-k stability per swiss round
+#   --until-stable          # swiss: stop rounds once every --topk prefix is
+#                           # stable (needs --topk)
 ```
 
 **Case config lives in the scan module**, not the engine. A scan defines
@@ -290,6 +293,18 @@ Mechanics:
 - **Schedule**: `round-robin` (default) compares all pairs; `swiss`
   (`--schedule swiss`, `--rounds N`) is cheaper and concentrates comparisons
   near the top for large pools.
+- **Top-k stability** (`--topk 5,10,20`): an anytime progress signal —
+  comparison choice stays k-free (swiss adjacency works every rank boundary at
+  once); k enters only as measurement. `topk_stability` bootstraps the judgment
+  log (resample → refit BT → does the top-k SET survive?) and extrapolates
+  judgments-to-stable from the k-boundary gap's z-score; printed per swiss round
+  (`--until-stable` stops rounds once every requested k is stable), once at the
+  end for round-robin. Caveat: a boundary a no-repeat schedule judged only once
+  plateaus below the threshold forever — plateau + growing estimate means "this
+  schedule can't certify k further", not "keep going". `closure_topk` is the
+  deterministic-judge (human oracle) variant: certification = transitive
+  judgment coverage of all top-vs-outside pairs, with est = missing adjacent
+  links; the referral-prioritizer's judge uses it.
 - **Output**: `_output/<scan>-rank-<role>.jsonl`, one row per cluster with
   `rank`, `utility` (Bradley-Terry), `wins`/`losses`/`ties`, and the member
   `locations`/`posting_ids`; plus a leaderboard to stdout.

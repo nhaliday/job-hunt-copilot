@@ -84,13 +84,14 @@ def standings(events: list[dict], pool: str, key_to_idx: dict[str, int]) -> list
     return score
 
 
-def cmp_results(
+def cmp_units(
     events: list[dict], pool: str, key_to_idx: dict[str, int]
-) -> list[dict]:
-    """Logged comparisons as ranking._resolve rows. A tie becomes one win in
-    each direction (the same encoding order-swap disagreement produces);
-    skips contribute nothing."""
-    rows = []
+) -> list[list[dict]]:
+    """Logged comparisons as ranking._resolve rows, one unit per judgment
+    (the resampling grain for topk_stability). A win is one row; a tie one
+    unit of two rows, a win each direction (the same encoding order-swap
+    disagreement produces); skips contribute nothing."""
+    units = []
     for e in events:
         if e.get("type") != "cmp" or e.get("pool") != pool:
             continue
@@ -98,10 +99,16 @@ def cmp_results(
         if a is None or b is None:  # key left the pool (census edit)
             continue
         if e["result"] == "a":
-            rows.append({"a": a, "b": b, "winner": a})
+            units.append([{"a": a, "b": b, "winner": a}])
         elif e["result"] == "b":
-            rows.append({"a": a, "b": b, "winner": b})
+            units.append([{"a": a, "b": b, "winner": b}])
         elif e["result"] == "tie":
-            rows.append({"a": a, "b": b, "winner": a})
-            rows.append({"a": a, "b": b, "winner": b})
-    return rows
+            units.append([{"a": a, "b": b, "winner": a}, {"a": a, "b": b, "winner": b}])
+    return units
+
+
+def cmp_results(
+    events: list[dict], pool: str, key_to_idx: dict[str, int]
+) -> list[dict]:
+    """cmp_units flattened: the rows ranking._resolve consumes."""
+    return [row for unit in cmp_units(events, pool, key_to_idx) for row in unit]

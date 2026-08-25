@@ -8,7 +8,12 @@ Subcommands (python -m referral_prioritizer.judge <cmd>):
 - tier       stage 2: pointwise-tier every census company (A/B/C/exclude)
              on the full enrichment card -> company-tiers.csv.
 - rank       stage 3: Swiss + Bradley-Terry within a tier (default A), on
-             two-card comparisons -> company-ranking.csv.
+             two-card comparisons -> company-ranking.csv. The status line
+             tracks top-k certification for --topk prefixes (fraction of
+             top-vs-outside pairs your judgments cover transitively, plus
+             comparisons still needed); comparison choice never depends on
+             k, so quitting once your k reads ✓ is the intended early exit
+             and --until-stable automates it.
 - browse     walk the finished ranking on the same card.
 
 Every judgment appends to a JSONL log under --judgments-dir (see judge_log);
@@ -24,7 +29,13 @@ from pathlib import Path
 
 import choix
 
-from job_description_scan.ranking import _resolve, _swiss_rounds, swiss_pairings
+from job_description_scan.ranking import (
+    _resolve,
+    _swiss_rounds,
+    closure_topk,
+    format_stability,
+    swiss_pairings,
+)
 
 from referral_prioritizer import judge_data, judge_log
 from referral_prioritizer.judge_tui import BrowseApp, JudgeApp
@@ -254,6 +265,8 @@ class RankController(_Controller):
         tier: str,
         tiers: dict[str, str],
         rounds: int | None,
+        topk: list[int] | None = None,
+        until_stable: bool = False,
     ) -> None:
         super().__init__(log_path)
         self.cards_by_company = {c["company"]: c for c in cards}
@@ -264,10 +277,18 @@ class RankController(_Controller):
         self.pool = f"rank:{tier}"
         n = len(self.keys)
         self.target = _swiss_rounds(n, rounds) * (n // 2) if n > 1 else 0
+        self.topk = topk or []
+        self.until_stable = until_stable
         self.rng = random.Random(0)
 
     def _build(self) -> None:
         pass  # questions come from _refill so standings stay fresh per round
+
+    def _stability(self, events: list[dict]) -> list[dict]:
+        # closure_topk, not the bootstrap: the human is the oracle, so
+        # certification is judgment coverage, not resampling noise.
+        units = judge_log.cmp_units(events, self.pool, self.idx)
+        return closure_topk(len(self.keys), units, self.topk) if units else []
 
     def _refill(self) -> dict | None:
         events = judge_log.load(self.log_path)
@@ -276,19 +297,23 @@ class RankController(_Controller):
             for a, b in (tuple(p) for p in judge_log.played_pairs(events, self.pool))
             if a in self.idx and b in self.idx
         }
+        stats = self._stability(events) if self.topk else []
+        if self.until_stable and stats and all(s["stable"] for s in stats):
+            return None
         if len(played) >= self.target:
             return None
         score = judge_log.standings(events, self.pool, self.idx)
         matchups = swiss_pairings(len(self.keys), score, played, self.rng)
         if not matchups:
             return None
+        stab = f" · {format_stability(stats)}" if stats else ""
         for i, j in matchups:
             self.queue.append(
                 {
                     "mode": "compare",
                     "heading": (
                         f"tier {self.tier} ranking — "
-                        f"{len(played)}/{self.target} comparisons"
+                        f"{len(played)}/{self.target} comparisons{stab}"
                     ),
                     "left": self.cards_by_company[self.keys[i]],
                     "right": self.cards_by_company[self.keys[j]],
@@ -347,6 +372,11 @@ class RankController(_Controller):
                     }
                 )
         judge_data.write_ranking(out_path, rows)
+        if self.topk:
+            stats = self._stability(events)
+            if stats:
+                m = len(judge_log.cmp_units(events, self.pool, self.idx))
+                print(f"tier {self.tier}: {m} judgments · {format_stability(stats)}")
 
 
 def _browse_entries(args) -> list[tuple[dict, dict | None]]:
@@ -391,6 +421,18 @@ def main() -> None:
     ap.add_argument("--tier", default="A", help="rank: which tier to compare")
     ap.add_argument("--rounds", type=int, help="rank: swiss rounds override")
     ap.add_argument(
+        "--topk",
+        default="5,10,20",
+        help="rank: comma-separated k values whose top-k certification shows "
+        "in the status line and after derive ('' disables)",
+    )
+    ap.add_argument(
+        "--until-stable",
+        action="store_true",
+        help="rank: stop asking once every --topk prefix is fully certified "
+        "by your own judgments (transitive closure covers all crossing pairs)",
+    )
+    ap.add_argument(
         "--retier", action="store_true", help="tier: revisit already-tiered"
     )
     ap.add_argument("--only", help="tier: substring filter on company name")
@@ -433,6 +475,8 @@ def main() -> None:
             args.tier,
             tiers,
             args.rounds,
+            topk=[int(k) for k in args.topk.split(",") if k.strip()],
+            until_stable=args.until_stable,
         )
         if not args.derive_only:
             JudgeApp(ctl).run()

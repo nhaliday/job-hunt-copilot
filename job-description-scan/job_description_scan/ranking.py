@@ -382,6 +382,197 @@ def rank(cands: list[Candidate], results: list[dict]) -> list[dict]:
 
 
 # --------------------------------------------------------------------------- #
+# 7. Top-k stability (anytime progress signal for the tournament)
+# --------------------------------------------------------------------------- #
+# Comparison selection stays k-free (swiss pairs adjacent standings, which
+# works every rank boundary at once); k enters only here, as measurement.
+STABLE_AT = 0.95
+
+
+def topk_stability(
+    n: int,
+    units: list[list[dict]],
+    ks: list[int],
+    *,
+    n_boot: int = 200,
+    seed: int = 0,
+    z_target: float = 1.96,
+) -> list[dict]:
+    """Bootstrap stability of the top-k prefixes of the BT ranking.
+
+    `units` are independent judgment units, each a list of _resolve-shaped
+    rows ({"a", "b", "winner"}) — one LLM judge call, or one human keypress
+    (a tie is one unit of two rows). Resampling units with replacement and
+    refitting measures how often the top-k SET survives (set, not order:
+    "which items make the cut" is the actionable question; within-prefix
+    order keeps refining as comparisons accrue).
+
+    Per k returns {"k", "stability" (fraction of refits whose top-k set
+    matches the point estimate's), "est_more" (rough additional judgments
+    until stable: 1/sqrt(m) extrapolation of the k-boundary utility gap's
+    z-score to z_target; 0 = already stable, None = no signal yet)}. ks are
+    deduped and clamped to 0 < k < n (the full set is trivially stable).
+
+    Interpretation caveat: standings-adjacent items are separated only by
+    their direct game(s) — shared-opponent records carry no signal — so a
+    boundary a no-repeat schedule judged exactly once plateaus below
+    STABLE_AT no matter how many further rounds run (order-swap's two calls
+    lift the ceiling to ~0.9). A plateau with growing est_more means "this
+    schedule cannot certify k further", not "keep going".
+    """
+    ks = sorted({k for k in ks if 0 < k < n})
+    rows = [r for u in units for r in u if r.get("winner") is not None]
+    edges, _ = _resolve(rows)
+    if not ks or not edges:
+        return [
+            {"k": k, "stability": 0.0, "est_more": None, "stable": False} for k in ks
+        ]
+    utils = choix.ilsr_pairwise(n, edges, alpha=0.01)
+    order = sorted(range(n), key=lambda i: -utils[i])
+    topsets = {k: frozenset(order[:k]) for k in ks}
+    boundary = {k: (order[k - 1], order[k]) for k in ks}
+
+    rng = random.Random(seed)
+    matches = {k: 0 for k in ks}
+    gaps: dict[int, list[float]] = {k: [] for k in ks}
+    m = len(units)
+    for _ in range(n_boot):
+        sample = [
+            r
+            for _ in range(m)
+            for r in units[rng.randrange(m)]
+            if r.get("winner") is not None
+        ]
+        b_edges, _ = _resolve(sample)
+        if not b_edges:
+            continue  # counts as a mismatch for every k
+        try:
+            b_utils = choix.ilsr_pairwise(n, b_edges, alpha=0.01)
+        except Exception:
+            continue  # degenerate resample: mismatch
+        b_order = sorted(range(n), key=lambda i: -b_utils[i])
+        for k in ks:
+            if frozenset(b_order[:k]) == topsets[k]:
+                matches[k] += 1
+            i, j = boundary[k]
+            gaps[k].append(float(b_utils[i]) - float(b_utils[j]))
+
+    out = []
+    for k in ks:
+        stability = matches[k] / n_boot
+        i, j = boundary[k]
+        gap = float(utils[i]) - float(utils[j])
+        gs = gaps[k]
+        se = 0.0
+        if len(gs) >= 2:
+            mean = sum(gs) / len(gs)
+            se = (sum((g - mean) ** 2 for g in gs) / (len(gs) - 1)) ** 0.5
+        est_more: int | None
+        if stability >= STABLE_AT:
+            est_more = 0
+        elif se <= 0 or gap <= 0 or gap / se < 0.5:
+            est_more = None  # boundary too unresolved to extrapolate from
+        else:
+            # se shrinks ~1/sqrt(m); solve m' where gap/se' = z_target. The
+            # boundary pair is the dominant but not only instability source,
+            # so floor at 1 while the set still flips.
+            est_more = max(1, math.ceil(m * ((z_target * se / gap) ** 2 - 1)))
+        out.append(
+            {
+                "k": k,
+                "stability": stability,
+                "est_more": est_more,
+                "stable": stability >= STABLE_AT,
+            }
+        )
+    return out
+
+
+def closure_topk(n: int, units: list[list[dict]], ks: list[int]) -> list[dict]:
+    """Top-k certification for a NON-stochastic judge (a human): judgments
+    are treated as ground truth, so the question is coverage, not sampling
+    error. The top-k set (by the BT fit) is certified when every member
+    reaches every outsider through a directed path of actual judgments
+    (winner->loser edges; a tie is an edge each way — "no worse than", which
+    covers a boundary in both directions).
+
+    Same row shape as topk_stability: "stability" is the covered fraction of
+    the k*(n-k) crossing pairs, "stable" means fully covered, "est_more" the
+    number of unjudged standings-adjacent pairs spanning some uncovered
+    crossing (judging them completes the chains) — a lower bound that
+    reprices as answers land. Bootstrap resampling is wrong for this judge:
+    a no-repeat schedule leaves every adjacent boundary on a single
+    judgment, which caps bootstrap stability near coin-flip territory no
+    matter how many rounds run.
+    """
+    ks = sorted({k for k in ks if 0 < k < n})
+    rows = [r for u in units for r in u if r.get("winner") is not None]
+    edges, _ = _resolve(rows)
+    if not ks or not edges:
+        return [
+            {"k": k, "stability": 0.0, "est_more": None, "stable": False} for k in ks
+        ]
+    utils = choix.ilsr_pairwise(n, edges, alpha=0.01)
+    order = sorted(range(n), key=lambda i: -utils[i])
+    pos = {item: p for p, item in enumerate(order)}
+
+    adj: dict[int, set[int]] = {}
+    for w, loser in edges:
+        adj.setdefault(w, set()).add(loser)
+    reach: dict[int, set[int]] = {}
+    for start in range(n):
+        seen = {start}
+        frontier = [start]
+        while frontier:
+            nxt = [t for f in frontier for t in adj.get(f, ()) if t not in seen]
+            seen.update(nxt)
+            frontier = nxt
+        reach[start] = seen - {start}
+    judged = {frozenset((r["a"], r["b"])) for r in rows}
+
+    out = []
+    for k in ks:
+        uncovered = [(i, j) for i in order[:k] for j in order[k:] if j not in reach[i]]
+        crossing = k * (n - k)
+        needed: set[int] = set()
+        stubborn = 0
+        for i, j in uncovered:
+            slots = [
+                r
+                for r in range(pos[i], pos[j])
+                if frozenset((order[r], order[r + 1])) not in judged
+            ]
+            if slots:
+                needed.update(slots)
+            else:  # chain judged but contradicts the fit — only a direct
+                stubborn += 1  # (i, j) comparison can settle it
+        covered = 1.0 - len(uncovered) / crossing
+        out.append(
+            {
+                "k": k,
+                "stability": covered,
+                "est_more": (len(needed) + stubborn) if uncovered else 0,
+                "stable": not uncovered,
+            }
+        )
+    return out
+
+
+def format_stability(stats: list[dict]) -> str:
+    """One-line summary: 'top-k stable: k5=1.00✓ k10=0.82(~+18) k20=0.41(?)'."""
+    parts = []
+    for s in stats:
+        if s["stable"]:
+            tail = "✓"
+        elif s["est_more"] is None:
+            tail = "(?)"
+        else:
+            tail = f"(~+{s['est_more']})"
+        parts.append(f"k{s['k']}={s['stability']:.2f}{tail}")
+    return "top-k stable: " + " ".join(parts) if parts else ""
+
+
+# --------------------------------------------------------------------------- #
 # Orchestration
 # --------------------------------------------------------------------------- #
 async def run_ladder(
@@ -396,10 +587,23 @@ async def run_ladder(
     seed: int = 0,
     *,
     judge: Judge | None = None,
+    topk: list[int] | None = None,
+    until_stable: bool = False,
 ) -> list[dict]:
     n = len(cands)
     rng = random.Random(seed)
     results: list[dict] = []
+
+    def _stability_check(tag: str) -> bool:
+        """Report top-k stability; True once every requested k is stable."""
+        if not topk:
+            return False
+        units = [[r] for r in results if r["winner"] is not None]
+        stats = topk_stability(n, units, topk)
+        print(
+            f"  {tag}: {len(units)} judgments · {format_stability(stats)}", flush=True
+        )
+        return bool(stats) and all(s["stable"] for s in stats)
 
     # Default judge is the LLM (resume_text/label/model are its inputs); an
     # injected judge makes those parameters inert and needs no client.
@@ -417,10 +621,12 @@ async def run_ladder(
                 list(itertools.combinations(range(n), 2)), order_swap, rng
             )
             results = await _run_comparisons(judge, cands, directed, concurrency)
+            _stability_check("final")
         else:  # swiss
             played: set[frozenset] = set()
             score = [0.0] * n
-            for _ in range(_swiss_rounds(n, rounds)):
+            total_rounds = _swiss_rounds(n, rounds)
+            for rd in range(total_rounds):
                 matchups = swiss_pairings(n, score, played, rng)
                 if not matchups:
                     break
@@ -432,6 +638,8 @@ async def run_ladder(
                 for r in round_results:  # update standings for next pairing
                     if r["winner"] is not None:
                         score[r["winner"]] += 1.0
+                if _stability_check(f"round {rd + 1}/{total_rounds}") and until_stable:
+                    break
     finally:
         if anth is not None:
             await anth.close()
@@ -485,6 +693,17 @@ def main() -> None:
     )
     ap.add_argument("--rounds", type=int, help="swiss rounds (default ceil(log2 n)+2)")
     ap.add_argument(
+        "--topk",
+        help="comma-separated k values (e.g. 5,10,20): report bootstrap "
+        "top-k stability per swiss round (round-robin: once at the end)",
+    )
+    ap.add_argument(
+        "--until-stable",
+        action="store_true",
+        help="swiss: stop rounds early once every --topk prefix is stable "
+        f"(bootstrap stability >= {STABLE_AT})",
+    )
+    ap.add_argument(
         "--dedup-threshold",
         type=float,
         default=None,
@@ -502,6 +721,12 @@ def main() -> None:
         help="output JSONL (default _output/<scan>-rank-<role>.jsonl)",
     )
     args = ap.parse_args()
+
+    topk = [int(k) for k in args.topk.split(",")] if args.topk else None
+    if args.until_stable and not topk:
+        raise SystemExit("--until-stable needs --topk")
+    if args.until_stable and args.schedule != "swiss":
+        raise SystemExit("--until-stable only applies to --schedule swiss")
 
     scan, ladders = _load_ladders(args.scan, args.ladder)
     selected = [(ladder, select_rows(args.results, ladder)) for ladder in ladders]
@@ -558,6 +783,8 @@ def main() -> None:
                 args.rounds,
                 args.order_swap,
                 args.concurrency,
+                topk=topk,
+                until_stable=args.until_stable,
             )
         )
         out_path = args.out or Path("_output") / f"{scan_tail}-rank-{role_key}.jsonl"

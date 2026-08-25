@@ -52,3 +52,15 @@ def test_tie_encoding_and_standings(tmp_path):
         {"a": 0, "b": 1, "winner": 1},
     ]  # a tie is one win each direction — the shape _resolve reads as a tie
     assert judge_log.standings(events, "p", idx) == [1.5, 0.5, 0.0]
+
+
+def test_cmp_units_judgment_grain(tmp_path):
+    p = tmp_path / "log.jsonl"
+    idx = {"X": 0, "Y": 1, "Z": 2}
+    for a, b, res in (("X", "Y", "a"), ("Y", "Z", "tie"), ("X", "Z", "skip")):
+        judge_log.append(p, {"type": "cmp", "pool": "r", "a": a, "b": b, "result": res})
+    events = judge_log.load(p)
+    units = judge_log.cmp_units(events, "r", idx)
+    # one unit per judgment: a win is one row, a tie two, a skip none
+    assert [len(u) for u in units] == [1, 2]
+    assert judge_log.cmp_results(events, "r", idx) == [r for u in units for r in u]
