@@ -300,7 +300,8 @@ class RankController(_Controller):
         stats = self._stability(events) if self.topk else []
         if self.until_stable and stats and all(s["stable"] for s in stats):
             return None
-        if len(played) >= self.target:
+        done = len(played)  # before pairing: swiss_pairings marks its emits
+        if done >= self.target:
             return None
         score = judge_log.standings(events, self.pool, self.idx)
         matchups = swiss_pairings(len(self.keys), score, played, self.rng)
@@ -313,7 +314,7 @@ class RankController(_Controller):
                     "mode": "compare",
                     "heading": (
                         f"tier {self.tier} ranking — "
-                        f"{len(played)}/{self.target} comparisons{stab}"
+                        f"{done}/{self.target} comparisons{stab}"
                     ),
                     "left": self.cards_by_company[self.keys[i]],
                     "right": self.cards_by_company[self.keys[j]],

@@ -158,3 +158,20 @@ def test_rank_stage_certification_heading_and_until_stable(tmp_path, capsys):
     ctl2.derive(tmp_path / "company-ranking.csv")
     out = capsys.readouterr().out
     assert "tier A:" in out and "k3=1.00✓" in out
+
+
+def test_rank_heading_counts_answered_not_scheduled(tmp_path):
+    companies = [f"C{i}" for i in range(6)]
+    tiers = {c: "A" for c in companies}
+    ctl = RankController(
+        tmp_path / "ranking.jsonl",
+        [{"company": c} for c in companies],
+        "A",
+        tiers,
+        rounds=None,
+    )
+    p = ctl.next()
+    assert "— 0/" in p["heading"], "fresh log must read zero comparisons done"
+    ctl.answer(p, "a")
+    # still mid-round: heading was built at refill time, count unchanged
+    assert "— 0/" in ctl.next()["heading"]
