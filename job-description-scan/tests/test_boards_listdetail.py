@@ -16,6 +16,7 @@ import pytest
 import respx
 
 from job_description_scan.boards import workday as workday_module
+from job_description_scan.boards.adp import AdpClient
 from job_description_scan.boards.eightfold import EightfoldClient
 from job_description_scan.boards.phenom import PhenomClient
 from job_description_scan.boards.smartrecruiters import SmartRecruitersClient
@@ -529,3 +530,127 @@ def test_eightfold_filter_pushdown(respx_mock):
     by_id = {p.id: p for p in _ef_client(re.compile(r"\bUS\b")).iter_postings()}
     assert by_id["102"].content_text == ""  # skipped, still yielded
     assert not detail_b.called
+
+
+# --------------------------------------------------------------------------- #
+# adp
+# --------------------------------------------------------------------------- #
+_ADP_CONFIG_HOST = "myjobs.adp.com"
+_ADP_CONFIG_PATH = "/public/staffing/v1/career-site/acme"
+_ADP_API_HOST = "my.adp.com"
+_ADP_LIST = "/myadp_prefix/mycareer/public/staffing/v1/job-requisitions"
+
+
+def _adp_client() -> AdpClient:
+    return AdpClient("acme")
+
+
+def _adp_config(respx_mock) -> None:
+    respx_mock.get(host=_ADP_CONFIG_HOST, path=_ADP_CONFIG_PATH).mock(
+        return_value=httpx.Response(200, json={"orgoid": "ORG123", "name": "Acme"})
+    )
+
+
+def _adp_pages(rows: list[dict], count: int) -> list[httpx.Response]:
+    return [
+        httpx.Response(200, json={"count": count, "jobRequisitions": rows}),
+        httpx.Response(200, json={"count": count, "jobRequisitions": []}),
+    ]
+
+
+@respx.mock(assert_all_called=False)
+def test_adp_list_detail_parse(respx_mock):
+    _adp_config(respx_mock)
+    rows = [
+        {"reqId": "5001", "jobTitle": "Engineer I"},
+        {"reqId": "5002", "jobTitle": "Engineer II"},
+        {"noReqId": True},  # malformed row: skipped
+    ]
+    list_route = respx_mock.get(host=_ADP_API_HOST, path=_ADP_LIST).mock(
+        side_effect=_adp_pages(rows, 2)
+    )
+    respx_mock.get(host=_ADP_API_HOST, path=f"{_ADP_LIST}/5001").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "jobRequisitions": [
+                    {
+                        "reqId": "5001",
+                        "publishedJobTitle": "Senior Engineer I",
+                        "jobDescription": "<p>Build <b>things</b>.</p>",
+                        "jobQualifications": "<ul><li>US Citizen</li></ul>",
+                    }
+                ]
+            },
+        )
+    )
+    respx_mock.get(host=_ADP_API_HOST, path=f"{_ADP_LIST}/5002").mock(
+        return_value=httpx.Response(
+            200,
+            # no titles in detail -> falls back to the list row's jobTitle
+            json={"jobRequisitions": [{"jobDescription": "<p>B.</p>"}]},
+        )
+    )
+    a, b = _adp_client().iter_postings()
+    assert a.id == "5001" and a.title == "Senior Engineer I"
+    assert a.content_text == "Build things.\n\nUS Citizen"
+    assert a.location == ""  # ADP tenants leave structured locations empty
+    assert a.url == "https://myjobs.adp.com/acme/cx/job-details?reqId=5001"
+    assert b.title == "Engineer II"
+    # orgoid header from the config call reaches the data calls
+    assert list_route.calls[0].request.headers["orgoid"] == "ORG123"
+    assert list_route.calls[0].request.url.params["$top"]
+
+
+@respx.mock(assert_all_called=False)
+def test_adp_wrong_slug_fails_loud(respx_mock):
+    respx_mock.get(host=_ADP_CONFIG_HOST, path=_ADP_CONFIG_PATH).mock(
+        return_value=httpx.Response(400, json={"message": "Careersite not found"})
+    )
+    with pytest.raises(httpx.HTTPStatusError):
+        list(_adp_client().iter_postings())
+
+
+@respx.mock(assert_all_called=False)
+def test_adp_empty_board_fails_loud(respx_mock):
+    _adp_config(respx_mock)
+    respx_mock.get(host=_ADP_API_HOST, path=_ADP_LIST).mock(
+        return_value=httpx.Response(200, json={"count": 0, "jobRequisitions": []})
+    )
+    with pytest.raises(ValueError, match="0 postings"):
+        list(_adp_client().iter_postings())
+
+
+@respx.mock(assert_all_called=False)
+def test_adp_delisted_skipped_loudly(respx_mock, capsys):
+    _adp_config(respx_mock)
+    respx_mock.get(host=_ADP_API_HOST, path=f"{_ADP_LIST}/404404").mock(
+        return_value=httpx.Response(404, json={"message": "Not Found"})
+    )
+    respx_mock.get(host=_ADP_API_HOST, path=f"{_ADP_LIST}/5001").mock(
+        return_value=httpx.Response(
+            200, json={"jobRequisitions": [{"jobDescription": "<p>A.</p>"}]}
+        )
+    )
+    got = list(_adp_client().fetch_postings(["404404", "5001"]))
+    assert [p.id for p in got] == ["5001"]
+    assert "adp: skipping 404404" in capsys.readouterr().out
+
+
+@respx.mock(assert_all_called=False)
+def test_adp_pagination_stops_on_stale_pages(respx_mock, capsys):
+    _adp_config(respx_mock)
+    row = {"reqId": "5001", "jobTitle": "Engineer"}
+    # count says 3 but the server keeps re-serving the same row (boundary
+    # churn): the no-new-rows guard must terminate the walk.
+    respx_mock.get(host=_ADP_API_HOST, path=_ADP_LIST).mock(
+        return_value=httpx.Response(200, json={"count": 3, "jobRequisitions": [row]})
+    )
+    respx_mock.get(host=_ADP_API_HOST, path=f"{_ADP_LIST}/5001").mock(
+        return_value=httpx.Response(
+            200, json={"jobRequisitions": [{"jobDescription": "<p>A.</p>"}]}
+        )
+    )
+    postings = list(_adp_client().iter_postings())
+    assert [p.id for p in postings] == ["5001"]
+    assert "collected 1 rows vs count 3" in capsys.readouterr().out

@@ -79,6 +79,7 @@ def strip_html(raw: str) -> str:
 def make_client(
     source: BoardSource, location_filter: re.Pattern[str] | None = None
 ) -> BoardClient:
+    from .adp import AdpClient
     from .ashby import AshbyClient
     from .eightfold import EightfoldClient
     from .greenhouse import GreenhouseClient
@@ -99,6 +100,11 @@ def make_client(
         return PinpointClient(source.slug)
     if source.kind == "manatal":
         return ManatalClient(source.slug)
+    # adp is list-then-detail but takes no location filter: ADP tenants leave
+    # structured locations empty (prose-only in the JD), so there is nothing
+    # for a pushdown — or the authoritative filter — to match on.
+    if source.kind == "adp":
+        return AdpClient(source.slug)
     # List-then-detail boards: content costs one GET per posting, so only these
     # clients take the location filter — to skip detail fetches for postings
     # that can't match. Semantics are unchanged: every posting is still

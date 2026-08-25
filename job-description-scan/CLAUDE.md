@@ -65,9 +65,9 @@ resume.
 2. Edit the `Extraction` and (optional) `Comparison` Pydantic classes to match
    the role family you want to characterize
 3. Edit the `scan = Scan(...)` block: source board (`greenhouse`, `ashby`,
-   `lever`, `workday`, `smartrecruiters`, `phenom`, `eightfold`, `pinpoint`, or
-   `manatal` — all nine implemented), slug, model. Slug formats: the big three
-   use the board's URL slug; `pinpoint` uses the tenant subdomain of
+   `lever`, `workday`, `smartrecruiters`, `phenom`, `eightfold`, `pinpoint`,
+   `manatal`, or `adp` — all ten implemented), slug, model. Slug formats: the
+   big three use the board's URL slug; `pinpoint` uses the tenant subdomain of
    `<tenant>.pinpointhq.com` (one-shot: verify with
    `curl https://<tenant>.pinpointhq.com/postings.json` — a wrong tenant 404s);
    `manatal` uses the careers-page.com portal slug (paginated one-shot: verify
@@ -86,10 +86,15 @@ resume.
    query param from the site's own config; verify with
    `curl "https://<host>/api/pcsx/search?domain=<domain>&start=0"`; the client
    raises on 0 postings, and the classic `/api/apply/v2/jobs` endpoint answering
-   "Not authorized for PCSX" is expected on these deployments). Phenom and
-   Eightfold front a separate ATS, so a company may have e.g. a Workday tenant
-   whose own listing surface is empty while the branded site carries the real
-   board
+   "Not authorized for PCSX" is expected on these deployments); `adp` uses the
+   myjobs.adp.com site path segment (`myjobs.adp.com/<slug>/cx/job-listing`,
+   list-then-detail: verify with
+   `curl https://myjobs.adp.com/public/staffing/v1/career-site/<slug>` — a wrong
+   slug answers 400 "Careersite not found"; note ADP tenants leave structured
+   locations empty, so pair with `location_filter=None` and let the prefilter
+   geography clause cut). Phenom and Eightfold front a separate ATS, so a
+   company may have e.g. a Workday tenant whose own listing surface is empty
+   while the branded site carries the real board
 4. Run: `uv run python -m job_description_scan --scan scans.<name>`
 
 Pydantic `Field(description=...)` strings flow into the JSON schema sent to the
