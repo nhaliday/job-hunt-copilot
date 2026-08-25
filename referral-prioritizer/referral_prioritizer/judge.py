@@ -290,32 +290,44 @@ class RankController(_Controller):
         units = judge_log.cmp_units(events, self.pool, self.idx)
         return closure_topk(len(self.keys), units, self.topk) if units else []
 
-    def _refill(self) -> dict | None:
-        events = judge_log.load(self.log_path)
-        played = {
+    def _played(self, events: list[dict]) -> set[frozenset]:
+        return {
             frozenset((self.idx[a], self.idx[b]))
             for a, b in (tuple(p) for p in judge_log.played_pairs(events, self.pool))
             if a in self.idx and b in self.idx
         }
+
+    def next(self) -> dict | None:
+        # Stamp the heading as the question is served, not when its round was
+        # scheduled — the count and certification move with every keypress,
+        # and --until-stable can stop mid-round.
+        p = super().next()
+        if p is None:
+            return None
+        events = judge_log.load(self.log_path)
         stats = self._stability(events) if self.topk else []
         if self.until_stable and stats and all(s["stable"] for s in stats):
             return None
-        done = len(played)  # before pairing: swiss_pairings marks its emits
-        if done >= self.target:
+        stab = f" · {format_stability(stats)}" if stats else ""
+        p["heading"] = (
+            f"tier {self.tier} ranking — "
+            f"{len(self._played(events))}/{self.target} comparisons{stab}"
+        )
+        return p
+
+    def _refill(self) -> dict | None:
+        events = judge_log.load(self.log_path)
+        played = self._played(events)
+        if len(played) >= self.target:
             return None
         score = judge_log.standings(events, self.pool, self.idx)
         matchups = swiss_pairings(len(self.keys), score, played, self.rng)
         if not matchups:
             return None
-        stab = f" · {format_stability(stats)}" if stats else ""
         for i, j in matchups:
             self.queue.append(
                 {
                     "mode": "compare",
-                    "heading": (
-                        f"tier {self.tier} ranking — "
-                        f"{done}/{self.target} comparisons{stab}"
-                    ),
                     "left": self.cards_by_company[self.keys[i]],
                     "right": self.cards_by_company[self.keys[j]],
                     "_pool": self.pool,

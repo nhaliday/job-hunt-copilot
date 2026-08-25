@@ -173,5 +173,10 @@ def test_rank_heading_counts_answered_not_scheduled(tmp_path):
     p = ctl.next()
     assert "— 0/" in p["heading"], "fresh log must read zero comparisons done"
     ctl.answer(p, "a")
-    # still mid-round: heading was built at refill time, count unchanged
-    assert "— 0/" in ctl.next()["heading"]
+    # heading is stamped as each question is served: count moves per keypress
+    p2 = ctl.next()
+    assert "— 1/" in p2["heading"]
+    # undo re-shows the prior payload, whose stamped count matches the
+    # post-retraction log
+    reshow = ctl.undo()
+    assert "— 0/" in reshow["heading"]
