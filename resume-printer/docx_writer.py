@@ -41,8 +41,8 @@ EM_CONTACT = 0.895
 EM_NAME = 2.368
 EM_H2 = 1.158
 BULLET_INDENT_TWIPS = 280  # ~ ul padding-left: 14pt
-# U+25C6, not the PDF's U+2666: EB Garamond covers only the former, and U+2666
-# has an emoji presentation that renders as a red suit glyph in fallback fonts
+# \u25c6 U+25C6, same as style.css: it's the diamond EB Garamond actually covers
+# (\u2666 U+2666 isn't in the font, and its emoji presentation renders red)
 BULLET = "\u25c6"
 
 
@@ -77,6 +77,29 @@ def _rule(par, edge, space_pt):
 
 def _letter_space(run, pt):
     run._r.get_or_add_rPr().append(_el("w:spacing", val=int(pt * 20)))
+
+
+def _font_fallback(doc, name, alt):
+    """Declare a substitute in fontTable.xml (w:altName): machines without
+    `name` installed fall back to `alt` instead of Word's default serif —
+    Garamond ships with Office and is close enough in metrics that the
+    one-page fit usually survives."""
+    from lxml import etree
+
+    part = doc.part.part_related_by(RT.FONT_TABLE)
+    root = etree.fromstring(part.blob)
+    font = etree.SubElement(root, qn("w:font"))
+    font.set(qn("w:name"), name)
+    for tag, val in (
+        ("w:altName", alt),
+        ("w:family", "roman"),
+        ("w:pitch", "variable"),
+    ):
+        e = etree.SubElement(font, qn(tag))
+        e.set(qn("w:val"), val)
+    part._blob = etree.tostring(
+        root, xml_declaration=True, encoding="UTF-8", standalone=True
+    )
 
 
 def _fmt(par, *, line_pt, align=None, before=0.0, after=0.0):
@@ -401,6 +424,7 @@ def write_docx(html_path, out_path, base_pt):
             )
             _emit(par, _segments(el), base_pt)
 
+    _font_fallback(doc, FONT, "Garamond")
     doc.core_properties.author = name_text
     doc.core_properties.title = name_text
     doc.save(out_path)

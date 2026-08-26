@@ -54,11 +54,13 @@ pandoc "$SRC/resumes/example.md" --lua-filter=filter.lua --template=template.htm
    into a DOCX (python-docx + raw OOXML; no pandoc reference-doc — that approach
    was tried and stripped in e371af6). Styling mirrors style.css: em ratios off
    one base size, exact line heights, `pBdr` double rules, borderless two-column
-   entry tables, ◆ bullet numbering (U+25C6 — EB Garamond lacks the PDF's
-   U+2666, whose emoji fallback renders red). Page fit warm-starts at the PDF's
-   fitted size minus a 0.3pt buffer, then verifies the page count through
-   headless LibreOffice and steps down 0.25pt until it fits (skipped with a
-   notice if `soffice` is absent)
+   entry tables, ◆ bullet numbering (U+25C6, same marker as the PDF — EB
+   Garamond doesn't cover ♦ U+2666, whose emoji fallback renders red). The
+   fontTable declares Garamond as the `altName` substitute, so machines without
+   EB Garamond fall back to a metric-similar Office serif instead of Times. Page
+   fit warm-starts at the PDF's fitted size minus a 0.3pt buffer, then verifies
+   the page count through headless LibreOffice and steps down 0.25pt until it
+   fits (skipped with a notice if `soffice` is absent)
 4. **post_build** runs after each PDF (or on cached PDFs that didn't need
    rebuilding):
    - **all**: `verify_pages.py` (warns if PDF exceeds 1 page; never fails the
@@ -110,7 +112,7 @@ Optional intro paragraph.
 
 **_Organization Name_** [City, ST]{.location}
 
-- Bullet point (rendered with ♦ marker)
+- Bullet point (rendered with ◆ marker)
 ```
 
 - `[...]{.date}` and `[...]{.location}` are Pandoc span syntax, consumed by

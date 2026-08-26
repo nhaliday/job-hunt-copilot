@@ -108,13 +108,13 @@ smoke_test() {
   fi
 
   # Bullet markers should be present
-  if ! echo "$text" | grep -q '♦'; then
-    echo "    WARN: bullet marker ♦ not found in text extraction" >&2
+  if ! echo "$text" | grep -q '◆'; then
+    echo "    WARN: bullet marker ◆ not found in text extraction" >&2
     warn=1
   fi
 
   # Bullet text should be inline (not just bare markers)
-  if echo "$text" | grep -qE '^♦[[:space:]]*$'; then
+  if echo "$text" | grep -qE '^◆[[:space:]]*$'; then
     echo "    WARN: bullet markers detached from text (ATS may misparse)" >&2
     warn=1
   fi

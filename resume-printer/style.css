@@ -108,7 +108,9 @@ h2 {
 /* --- Bullet lists --- */
 
 ul {
-  list-style-type: "♦  ";
+  /* ◆ U+25C6, which EB Garamond itself covers — the old ♦ U+2666 came from a
+     fallback font (and renders as a red emoji suit in DOCX viewers) */
+  list-style-type: "◆  ";
   margin-top: 1pt;
   margin-bottom: 2pt;
   padding-left: 14pt;
