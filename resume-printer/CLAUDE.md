@@ -6,7 +6,7 @@ pipeline. All commands below run from this directory.
 ## Pipeline here, content in the consuming project
 
 This repo holds only the build pipeline — `build.sh`, `*.py`, `template*.html`,
-`*.css`, `filter.lua`, `render_variants.py`. The actual résumé/cover-letter
+`*.css`, `filter-resume.lua`, `render_variants.py`. The actual résumé/cover-letter
 sources (`resumes/`, `letters/`, `*.variants.toml`) live in a separate private
 content project, which invokes this pipeline with its own root as `SRC_ROOT`
 (typically via a wrapper: `tools/resume-printer/build.sh <content-root>`).
@@ -37,7 +37,7 @@ Outputs land in `_output/resumes/<name>.pdf` + `_output/resumes/<name>.docx` and
 Single resume, manually:
 
 ```bash
-pandoc "$SRC/resumes/example.md" --lua-filter=filter.lua --template=template.html --css=style.css -o "$OUT/resumes/example.html"
+pandoc "$SRC/resumes/example.md" --lua-filter=filter-resume.lua --template=template-resume.html --css=resume.css -o "$OUT/resumes/example.html"
 .venv/bin/python fit.py "$OUT/resumes/example.html" "$OUT/resumes/example.pdf"   # prints fitted pt on stdout
 .venv/bin/python docx_writer.py "$OUT/resumes/example.html" "$OUT/resumes/example.docx" --pdf-fit-pt 10.84
 .venv/bin/python verify_lines.py "$OUT/resumes/example.pdf" "$SRC/resumes/example.md"
@@ -47,12 +47,12 @@ pandoc "$SRC/resumes/example.md" --lua-filter=filter.lua --template=template.htm
 ## Pipeline
 
 1. **Pandoc** converts `resumes/*.md` and `letters/*.md` → intermediate HTML,
-   using per-doc-type template + CSS (and `filter.lua` for resumes only)
+   using per-doc-type template + CSS (and `filter-resume.lua` for resumes only)
 2. **fit.py** binary-searches font size (10–12pt) to fit exactly 1 page, renders
    PDF via WeasyPrint, and prints the fitted size on stdout
 3. **docx_writer.py** (resumes only) transliterates the same intermediate HTML
    into a DOCX (python-docx + raw OOXML; no pandoc reference-doc — that approach
-   was tried and stripped in e371af6). Styling mirrors style.css: em ratios off
+   was tried and stripped in e371af6). Styling mirrors resume.css: em ratios off
    one base size, exact line heights, `pBdr` double rules, borderless two-column
    entry tables, ◆ bullet numbering (U+25C6, same marker as the PDF — EB
    Garamond doesn't cover ♦ U+2666, whose emoji fallback renders red). The
@@ -91,7 +91,7 @@ is free.
 
 | Type   | Source dir | Template               | CSS          | Filter       | Page size | Output                         |
 | ------ | ---------- | ---------------------- | ------------ | ------------ | --------- | ------------------------------ |
-| resume | `resumes/` | `template.html`        | `style.css`  | `filter.lua` | A4        | `_output/resumes/*.{pdf,docx}` |
+| resume | `resumes/` | `template-resume.html`        | `resume.css`  | `filter-resume.lua` | A4        | `_output/resumes/*.{pdf,docx}` |
 | letter | `letters/` | `template-letter.html` | `letter.css` | (none)       | US Letter | `_output/letters/*.pdf`        |
 
 ## Markdown Resume Format
@@ -116,7 +116,7 @@ Optional intro paragraph.
 ```
 
 - `[...]{.date}` and `[...]{.location}` are Pandoc span syntax, consumed by
-  `filter.lua` to produce two-column HTML tables
+  `filter-resume.lua` to produce two-column HTML tables
 - H2 = centered uppercase section headers with double-rule border
 - H3 + following org/location paragraph = one entry, transformed into table rows
   by the Lua filter

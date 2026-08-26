@@ -1,4 +1,4 @@
-"""Write a resume DOCX from the intermediate HTML, mirroring style.css.
+"""Write a resume DOCX from the intermediate HTML, mirroring resume.css.
 
 The DOCX is generated programmatically (python-docx, with raw OOXML for what
 it can't express: rule borders, custom bullet numbering, hyperlinks) rather
@@ -8,7 +8,7 @@ two-column entry tables).
 
 Input is the same post-filter HTML that fit.py renders, so PDF and DOCX
 content always agree. All type sizes derive from one base font size via the
-em ratios in style.css; absolute spacing (margins, rule padding) stays fixed,
+em ratios in resume.css; absolute spacing (margins, rule padding) stays fixed,
 also mirroring the CSS.
 
 Page fit: start from the PDF's fitted size minus a safety buffer (Word's line
@@ -41,7 +41,7 @@ EM_CONTACT = 0.895
 EM_NAME = 2.368
 EM_H2 = 1.158
 BULLET_INDENT_TWIPS = 280  # ~ ul padding-left: 14pt
-# \u25c6 U+25C6, same as style.css: it's the diamond EB Garamond actually covers
+# \u25c6 U+25C6, same as resume.css: it's the diamond EB Garamond actually covers
 # (\u2666 U+2666 isn't in the font, and its emoji presentation renders red)
 BULLET = "\u25c6"
 
@@ -311,7 +311,7 @@ def write_docx(html_path, out_path, base_pt):
     doc = Document()
 
     sec = doc.sections[0]
-    sec.page_width, sec.page_height = Mm(210), Mm(297)  # A4, as style.css @page
+    sec.page_width, sec.page_height = Mm(210), Mm(297)  # A4, as resume.css @page
     sec.top_margin = sec.bottom_margin = Mm(11)
     sec.left_margin = sec.right_margin = Mm(15)
     sec.header_distance = sec.footer_distance = Emu(0)

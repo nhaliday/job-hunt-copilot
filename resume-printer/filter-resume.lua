@@ -1,4 +1,4 @@
--- resume-filter.lua
+-- filter-resume.lua
 -- Transforms resume Markdown into formatted HTML for WeasyPrint PDF generation
 
 local function stringify(inlines)

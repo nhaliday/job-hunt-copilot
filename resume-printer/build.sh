@@ -208,9 +208,9 @@ build_dir() {
 }
 
 build_dir resume "$SRC_ROOT/resumes" \
-  "$SCRIPT_DIR/template.html" \
-  "$SCRIPT_DIR/style.css" \
-  "$SCRIPT_DIR/filter.lua" \
+  "$SCRIPT_DIR/template-resume.html" \
+  "$SCRIPT_DIR/resume.css" \
+  "$SCRIPT_DIR/filter-resume.lua" \
   "$SCRIPT_DIR/render_variants.py" \
   "$SCRIPT_DIR/docx_writer.py"
 
