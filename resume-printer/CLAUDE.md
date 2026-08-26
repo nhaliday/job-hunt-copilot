@@ -6,12 +6,12 @@ pipeline. All commands below run from this directory.
 ## Pipeline here, content in the consuming project
 
 This repo holds only the build pipeline — `build.sh`, `*.py`, `template*.html`,
-`*.css`, `filter-resume.lua`, `render_variants.py`. The actual résumé/cover-letter
-sources (`resumes/`, `letters/`, `*.variants.toml`) live in a separate private
-content project, which invokes this pipeline with its own root as `SRC_ROOT`
-(typically via a wrapper: `tools/resume-printer/build.sh <content-root>`).
-Outputs land in the content project's gitignored `_output/`. No personal data
-may be committed here.
+`*.css`, `filter-resume.lua`, `render_variants.py`. The actual
+résumé/cover-letter sources (`resumes/`, `letters/`, `*.variants.toml`) live in
+a separate private content project, which invokes this pipeline with its own
+root as `SRC_ROOT` (typically via a wrapper:
+`tools/resume-printer/build.sh <content-root>`). Outputs land in the content
+project's gitignored `_output/`. No personal data may be committed here.
 
 ## Build
 
@@ -89,10 +89,10 @@ is free.
 
 ## Doc Types
 
-| Type   | Source dir | Template               | CSS          | Filter       | Page size | Output                         |
-| ------ | ---------- | ---------------------- | ------------ | ------------ | --------- | ------------------------------ |
-| resume | `resumes/` | `template-resume.html`        | `resume.css`  | `filter-resume.lua` | A4        | `_output/resumes/*.{pdf,docx}` |
-| letter | `letters/` | `template-letter.html` | `letter.css` | (none)       | US Letter | `_output/letters/*.pdf`        |
+| Type   | Source dir | Template               | CSS          | Filter              | Page size | Output                         |
+| ------ | ---------- | ---------------------- | ------------ | ------------------- | --------- | ------------------------------ |
+| resume | `resumes/` | `template-resume.html` | `resume.css` | `filter-resume.lua` | A4        | `_output/resumes/*.{pdf,docx}` |
+| letter | `letters/` | `template-letter.html` | `letter.css` | (none)              | US Letter | `_output/letters/*.pdf`        |
 
 ## Markdown Resume Format
 
@@ -155,5 +155,9 @@ Jane Doe
 - Python 3.14 pinned via `.python-version`; use `uv` for dependency management
 - Both CSS files import EB Garamond from Google Fonts (network required on first
   build)
-- Resumes: A4, 11mm/15mm margins. Letters: US Letter, 1in margins
+- Resumes: A4, 11mm/15mm margins. Letters: US Letter, 1in margins. Resume A4 was
+  inherited from the resume.io export the design was cloned from; a switch to US
+  Letter was tried 2026-08-26 and rejected — Letter is 18mm shorter, and the
+  densest resumes (the ones clamped at the 10pt fit floor) overflow to 2 pages.
+  Revisit only alongside a lower `--min-pt` or content trims.
 - Outputs are never committed (`_output/` is gitignored in the content project)
