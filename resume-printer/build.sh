@@ -43,7 +43,13 @@ build_one() {
   [ -n "$FILTER" ] && pandoc_args+=(--lua-filter="$FILTER")
   pandoc "${pandoc_args[@]}"
 
-  $WEASY_PYTHON "$SCRIPT_DIR/fit.py" "$OUT_SUBDIR/$out_name.html" "$OUT_SUBDIR/$out_name.pdf"
+  local fit_pt
+  fit_pt=$($WEASY_PYTHON "$SCRIPT_DIR/fit.py" "$OUT_SUBDIR/$out_name.html" "$OUT_SUBDIR/$out_name.pdf")
+
+  if [ "$DOC_TYPE" = resume ]; then
+    $WEASY_PYTHON "$SCRIPT_DIR/docx_writer.py" "$OUT_SUBDIR/$out_name.html" "$OUT_SUBDIR/$out_name.docx" \
+      --pdf-fit-pt "$fit_pt"
+  fi
 }
 
 # Run all post-build checks. Page count is checked for both types (warn-only).
@@ -55,6 +61,7 @@ post_build() {
     resume)
       smoke_test "$pdf" "$md"
       $WEASY_PYTHON "$SCRIPT_DIR/verify_lines.py" "$pdf" "$md"
+      $WEASY_PYTHON "$SCRIPT_DIR/verify_docx.py" "${pdf%.pdf}.docx" "$md"
       ;;
     letter)
       ;;
@@ -157,7 +164,9 @@ schedule() {
   local out_name="$1" input_md="$2"; shift 2
   local needs_build=1
   total=$((total + 1))
-  if is_up_to_date "$OUT_SUBDIR/$out_name.pdf" "$@"; then
+  # Resumes also emit a .docx; either output being stale forces a rebuild.
+  if is_up_to_date "$OUT_SUBDIR/$out_name.pdf" "$@" \
+    && { [ "$DOC_TYPE" != resume ] || is_up_to_date "$OUT_SUBDIR/$out_name.docx" "$@"; }; then
     needs_build=0
     skipped=$((skipped + 1))
   else
@@ -202,7 +211,8 @@ build_dir resume "$SRC_ROOT/resumes" \
   "$SCRIPT_DIR/template.html" \
   "$SCRIPT_DIR/style.css" \
   "$SCRIPT_DIR/filter.lua" \
-  "$SCRIPT_DIR/render_variants.py"
+  "$SCRIPT_DIR/render_variants.py" \
+  "$SCRIPT_DIR/docx_writer.py"
 
 build_dir letter "$SRC_ROOT/letters" \
   "$SCRIPT_DIR/template-letter.html" \

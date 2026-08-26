@@ -6,6 +6,7 @@ requires-python = ">=3.14"
 dependencies = [
     "jinja2>=3.1.6",
     "pdfplumber>=0.11.9",
+    "python-docx>=1.1",
     "weasyprint>=68.1",
 ]
 

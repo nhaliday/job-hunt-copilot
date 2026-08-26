@@ -3,8 +3,9 @@
 Generic job-hunt tooling. Three self-contained subprojects (own
 `pyproject.toml`, build scripts where applicable):
 
-- **`resume-printer/`** — Markdown → PDF pipeline for resumes and cover letters.
-  See [`resume-printer/CLAUDE.md`](resume-printer/CLAUDE.md).
+- **`resume-printer/`** — Markdown → PDF (+ DOCX for resumes) pipeline for
+  resumes and cover letters. See
+  [`resume-printer/CLAUDE.md`](resume-printer/CLAUDE.md).
 - **`job-description-scan/`** — job-board scanner (Greenhouse, Ashby, Lever,
   Workday, SmartRecruiters, Phenom, Eightfold, Pinpoint, Manatal, ADP) with
   LLM-driven structured extraction, resume comparison, and a pairwise-ranking

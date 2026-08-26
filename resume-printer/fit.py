@@ -53,6 +53,8 @@ def main():
     doc.write_pdf(args.pdf)
 
     print(f"{optimal:.2f}pt", file=sys.stderr)
+    # bare value on stdout for the caller (build.sh feeds it to docx_writer.py)
+    print(f"{optimal:.2f}")
 
 
 if __name__ == "__main__":

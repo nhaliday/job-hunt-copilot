@@ -23,16 +23,25 @@ uv sync                  # first time: create .venv, install weasyprint + pdfplu
 ```
 
 External dependencies (not managed by uv): `pandoc` (3.x), `pdftotext`
-(poppler).
+(poppler). Optional but recommended: LibreOffice
+(`brew install --cask libreoffice`) — the DOCX page-fit check converts
+headlessly through `soffice`; without it the DOCX is still produced at the
+warm-start size, just unverified. For faithful DOCX rendering/measuring on this
+machine, EB Garamond should also be installed as a system font (the Google-Fonts
+TTFs, family "EB Garamond" — the `font-eb-garamond` brew cask installs a
+different, boldless revival with family "EB Garamond 08").
 
-Outputs land in `_output/resumes/<name>.pdf` and `_output/letters/<name>.pdf`.
+Outputs land in `_output/resumes/<name>.pdf` + `_output/resumes/<name>.docx` and
+`_output/letters/<name>.pdf`.
 
 Single resume, manually:
 
 ```bash
 pandoc "$SRC/resumes/example.md" --lua-filter=filter.lua --template=template.html --css=style.css -o "$OUT/resumes/example.html"
-.venv/bin/python fit.py "$OUT/resumes/example.html" "$OUT/resumes/example.pdf"
+.venv/bin/python fit.py "$OUT/resumes/example.html" "$OUT/resumes/example.pdf"   # prints fitted pt on stdout
+.venv/bin/python docx_writer.py "$OUT/resumes/example.html" "$OUT/resumes/example.docx" --pdf-fit-pt 10.84
 .venv/bin/python verify_lines.py "$OUT/resumes/example.pdf" "$SRC/resumes/example.md"
+.venv/bin/python verify_docx.py "$OUT/resumes/example.docx" "$SRC/resumes/example.md"
 ```
 
 ## Pipeline
@@ -40,15 +49,26 @@ pandoc "$SRC/resumes/example.md" --lua-filter=filter.lua --template=template.htm
 1. **Pandoc** converts `resumes/*.md` and `letters/*.md` → intermediate HTML,
    using per-doc-type template + CSS (and `filter.lua` for resumes only)
 2. **fit.py** binary-searches font size (10–12pt) to fit exactly 1 page, renders
-   PDF via WeasyPrint
-3. **post_build** runs after each PDF (or on cached PDFs that didn't need
+   PDF via WeasyPrint, and prints the fitted size on stdout
+3. **docx_writer.py** (resumes only) transliterates the same intermediate HTML
+   into a DOCX (python-docx + raw OOXML; no pandoc reference-doc — that approach
+   was tried and stripped in e371af6). Styling mirrors style.css: em ratios off
+   one base size, exact line heights, `pBdr` double rules, borderless two-column
+   entry tables, ◆ bullet numbering (U+25C6 — EB Garamond lacks the PDF's
+   U+2666, whose emoji fallback renders red). Page fit warm-starts at the PDF's
+   fitted size minus a 0.3pt buffer, then verifies the page count through
+   headless LibreOffice and steps down 0.25pt until it fits (skipped with a
+   notice if `soffice` is absent)
+4. **post_build** runs after each PDF (or on cached PDFs that didn't need
    rebuilding):
    - **all**: `verify_pages.py` (warns if PDF exceeds 1 page; never fails the
      build)
    - **resume**: `smoke_test` (pdftotext checks for ATS readability — section
      headers, name, email, bullet markers, title/date alignment) +
      `verify_lines.py` (pdfplumber confirms h2 separator lines; this one DOES
-     fail the build on mismatch)
+     fail the build on mismatch) + `verify_docx.py` (structural DOCX check —
+     name, email, section headings, rule count, bullet count vs the markdown;
+     also fails the build on mismatch)
    - **letter**: no extra checks beyond the page count (cover letters aren't
      ATS-filtered)
 
@@ -67,10 +87,10 @@ is free.
 
 ## Doc Types
 
-| Type   | Source dir | Template               | CSS          | Filter       | Page size | Output                  |
-| ------ | ---------- | ---------------------- | ------------ | ------------ | --------- | ----------------------- |
-| resume | `resumes/` | `template.html`        | `style.css`  | `filter.lua` | A4        | `_output/resumes/*.pdf` |
-| letter | `letters/` | `template-letter.html` | `letter.css` | (none)       | US Letter | `_output/letters/*.pdf` |
+| Type   | Source dir | Template               | CSS          | Filter       | Page size | Output                         |
+| ------ | ---------- | ---------------------- | ------------ | ------------ | --------- | ------------------------------ |
+| resume | `resumes/` | `template.html`        | `style.css`  | `filter.lua` | A4        | `_output/resumes/*.{pdf,docx}` |
+| letter | `letters/` | `template-letter.html` | `letter.css` | (none)       | US Letter | `_output/letters/*.pdf`        |
 
 ## Markdown Resume Format
 
