@@ -61,6 +61,12 @@ h2 {
   margin-bottom: 6pt;
 }
 
+/* the one-line skills list under the Skills heading: centered, so the
+   leftover width splits symmetrically like the header and headings */
+h2#skills + p {
+  text-align: center;
+}
+
 /* --- Entry tables (title+date, org+location) --- */
 
 .entry-header,

@@ -416,9 +416,15 @@ def write_docx(html_path, out_path, base_pt):
             par = _fmt(doc.add_paragraph(), line_pt=LINE_HEIGHT * base_pt, before=2)
             _emit(par, _segments(el), base_pt, bold=True, caps=True)
         elif el.tag == "p":
+            # skills line: centered, as resume.css h2#skills + p
+            prev = el.getprevious()
+            after_skills = (
+                prev is not None and prev.tag == "h2" and prev.get("id") == "skills"
+            )
             par = _fmt(
                 doc.add_paragraph(),
                 line_pt=LINE_HEIGHT * base_pt,
+                align=center if after_skills else None,
                 before=base_pt / 2,
                 after=base_pt / 2,
             )
