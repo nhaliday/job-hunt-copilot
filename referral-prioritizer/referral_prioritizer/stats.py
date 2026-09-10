@@ -49,7 +49,7 @@ SCANNABLE = (
 # two-letter false positive), mirroring scans-side greenhouse semantics.
 DEFAULT_FILTER = r"(?i:\b(USA?|United States|Canada|Remote)\b)|, (?!UK)[A-Z]{2}\b"
 # Workday list rows are bare "City, ST" with no country (see the
-# job-description-scan CLAUDE.md gotcha), so match state/province codes too.
+# job-description-scan AGENTS.md gotcha), so match state/province codes too.
 DEFAULT_WORKDAY_FILTER = r", [A-Z]{2}\b|United States|Canada|\bRemote\b"
 
 

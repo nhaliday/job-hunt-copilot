@@ -76,5 +76,5 @@ Built primarily with AI coding agents (Claude Code), with every change reviewed.
 The style that emerged: agents do the research (API documentation, schema
 verification against live boards), the mechanical work, and the verification
 harnesses; design decisions — what to pin, what to filter, what to verify — stay
-human. `CLAUDE.md` files throughout are the agent-facing docs and double as
+human. `AGENTS.md` files throughout are the agent-facing docs and double as
 architecture notes.

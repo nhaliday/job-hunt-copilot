@@ -106,12 +106,12 @@ class Comparison(BaseModel):
 # title (that's what the cheap-model `prefilter` below is for).
 # Workday caveat: single-location list rows are bare "City, ST" with no country,
 # so a country-anchored regex like this one matches nothing there — write
-# Workday filters against city/state/"Remote" forms (see CLAUDE.md).
+# Workday filters against city/state/"Remote" forms (see AGENTS.md).
 US_LOCATION = re.compile(r"\b(USA?|United States)\b", re.IGNORECASE)
 
 # Optional cheap-model triage before extraction, for boards where relevant
 # roles are a small minority. Batched title+location lines; recall-biased and
-# fail-open; drops appear as `_filtered` audit rows. See CLAUDE.md.
+# fail-open; drops appear as `_filtered` audit rows. See AGENTS.md.
 # from job_description_scan.config import Prefilter
 # PREFILTER = Prefilter(
 #     criterion=(
@@ -128,7 +128,7 @@ scan = Scan(
     # kind: greenhouse | ashby | lever | workday | smartrecruiters.
     # Slugs: workday is "hostprefix/site" (e.g. "acme.wd5/Acme_Careers");
     # smartrecruiters is the API company identifier (may differ from the
-    # careers-site slug). See CLAUDE.md "Adding a new scan".
+    # careers-site slug). See AGENTS.md "Adding a new scan".
     source=BoardSource(kind="greenhouse", slug="acme"),
     extraction=Extraction,
     comparison=Comparison,

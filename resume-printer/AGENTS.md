@@ -1,0 +1,163 @@
+# AGENTS.md
+
+This file provides guidance to Claude Code when working with the resume-printer
+pipeline. All commands below run from this directory.
+
+## Pipeline here, content in the consuming project
+
+This repo holds only the build pipeline — `build.sh`, `*.py`, `template*.html`,
+`*.css`, `filter-resume.lua`, `render_variants.py`. The actual
+résumé/cover-letter sources (`resumes/`, `letters/`, `*.variants.toml`) live in
+a separate private content project, which invokes this pipeline with its own
+root as `SRC_ROOT` (typically via a wrapper:
+`tools/resume-printer/build.sh <content-root>`). Outputs land in the content
+project's gitignored `_output/`. No personal data may be committed here.
+
+## Build
+
+```bash
+uv sync                  # first time: create .venv, install weasyprint + pdfplumber
+./build.sh               # build all resumes and letters (incremental, parallel)
+./build.sh SRC           # source root holding resumes/ and letters/ (default: this dir)
+./build.sh SRC OUT       # custom output root (default: SRC/_output/)
+```
+
+External dependencies (not managed by uv): `pandoc` (3.x), `pdftotext`
+(poppler). Optional but recommended: LibreOffice
+(`brew install --cask libreoffice`) — the DOCX page-fit check converts
+headlessly through `soffice`; without it the DOCX is still produced at the
+warm-start size, just unverified. For faithful DOCX rendering/measuring on this
+machine, EB Garamond should also be installed as a system font (the Google-Fonts
+TTFs, family "EB Garamond" — the `font-eb-garamond` brew cask installs a
+different, boldless revival with family "EB Garamond 08").
+
+Outputs land in `_output/resumes/<name>.pdf` + `_output/resumes/<name>.docx` and
+`_output/letters/<name>.pdf`.
+
+Single resume, manually:
+
+```bash
+pandoc "$SRC/resumes/example.md" --lua-filter=filter-resume.lua --template=template-resume.html --css=resume.css -o "$OUT/resumes/example.html"
+.venv/bin/python fit.py "$OUT/resumes/example.html" "$OUT/resumes/example.pdf"   # prints fitted pt on stdout
+.venv/bin/python docx_writer.py "$OUT/resumes/example.html" "$OUT/resumes/example.docx" --pdf-fit-pt 10.84
+.venv/bin/python verify_lines.py "$OUT/resumes/example.pdf" "$SRC/resumes/example.md"
+.venv/bin/python verify_docx.py "$OUT/resumes/example.docx" "$SRC/resumes/example.md"
+```
+
+## Pipeline
+
+1. **Pandoc** converts `resumes/*.md` and `letters/*.md` → intermediate HTML,
+   using per-doc-type template + CSS (and `filter-resume.lua` for resumes only)
+2. **fit.py** binary-searches font size (10–12pt) to fit exactly 1 page, renders
+   PDF via WeasyPrint, and prints the fitted size on stdout
+3. **docx_writer.py** (resumes only) transliterates the same intermediate HTML
+   into a DOCX (python-docx + raw OOXML; no pandoc reference-doc — that approach
+   was tried and stripped in e371af6). Styling mirrors resume.css: em ratios off
+   one base size, exact line heights, `pBdr` double rules, borderless two-column
+   entry tables, ◆ bullet numbering (U+25C6, same marker as the PDF — EB
+   Garamond doesn't cover ♦ U+2666, whose emoji fallback renders red). The
+   fontTable declares Garamond as the `altName` substitute, so machines without
+   EB Garamond fall back to a metric-similar Office serif instead of Times. Page
+   fit warm-starts at the PDF's fitted size minus a 0.3pt buffer, then verifies
+   the page count through headless LibreOffice and steps down 0.25pt until it
+   fits (skipped with a notice if `soffice` is absent)
+4. **post_build** runs after each PDF (or on cached PDFs that didn't need
+   rebuilding):
+   - **all**: `verify_pages.py` (warns if PDF exceeds 1 page; never fails the
+     build)
+   - **resume**: `smoke_test` (pdftotext checks for ATS readability — section
+     headers, name, email, bullet markers, title/date alignment) +
+     `verify_lines.py` (pdfplumber confirms h2 separator lines; this one DOES
+     fail the build on mismatch) + `verify_docx.py` (structural DOCX check —
+     name, email, section headings, rule count, bullet count vs the markdown;
+     also fails the build on mismatch)
+   - **letter**: no extra checks beyond the page count (cover letters aren't
+     ATS-filtered)
+
+Builds are incremental (mtime of PDF vs source + per-type deps) and parallel
+(background jobs with mkdir-based stdout mutex). Post-build checks run on cached
+PDFs too, so editing `verify_pages.py`/`verify_lines.py`/the smoke test re-runs
+on the next `./build.sh` without forcing a rebuild. Variants (via
+`*.variants.toml` + `render_variants.py`) currently only used for resumes. The
+rendered per-variant Markdown persists at `_output/resumes/<variant>.md`
+(alongside the `.html`/`.pdf`), regenerated every build — it is the
+fully-instantiated resume (Jinja resolved), consumed downstream by
+`job-description-scan` as the `--resume` input so location/relocation
+frontmatter reaches the LLM. Incremental logic keys the PDF against the source
+`.md` + `.variants.toml`, not this intermediate, so re-rendering it every build
+is free.
+
+## Doc Types
+
+| Type   | Source dir | Template               | CSS          | Filter              | Page size | Output                         |
+| ------ | ---------- | ---------------------- | ------------ | ------------------- | --------- | ------------------------------ |
+| resume | `resumes/` | `template-resume.html` | `resume.css` | `filter-resume.lua` | A4        | `_output/resumes/*.{pdf,docx}` |
+| letter | `letters/` | `template-letter.html` | `letter.css` | (none)              | US Letter | `_output/letters/*.pdf`        |
+
+## Markdown Resume Format
+
+```markdown
+---
+name: Jane Doe
+email: jane.doe@example.com
+phone: 555-123-4567
+subtitle: Role-specific tagline
+---
+
+Optional intro paragraph.
+
+## Section Name
+
+### Job Title [Month YYYY – Month YYYY]{.date}
+
+**_Organization Name_** [City, ST]{.location}
+
+- Bullet point (rendered with ◆ marker)
+```
+
+- `[...]{.date}` and `[...]{.location}` are Pandoc span syntax, consumed by
+  `filter-resume.lua` to produce two-column HTML tables
+- H2 = centered uppercase section headers with double-rule border
+- H3 + following org/location paragraph = one entry, transformed into table rows
+  by the Lua filter
+
+## Markdown Cover Letter Format
+
+```markdown
+---
+name: Jane Doe
+email: jane.doe@example.com
+phone: 555-123-4567
+location: City, ST
+date: May 5, 2026
+---
+
+Recipient Line One\
+Recipient Line Two\
+Recipient Line Three
+
+Dear Hiring Manager,
+
+Body paragraphs.
+
+Sincerely,\
+Jane Doe
+```
+
+- Frontmatter renders a small top-left letterhead (name + contact line) and the
+  date
+- Recipient block, salutation, body, and sign-off live in the body
+- Use trailing `\` for hard line breaks (recipient block, signature) —
+  `template-letter.html` does not consume Pandoc spans
+
+## Key Details
+
+- Python 3.14 pinned via `.python-version`; use `uv` for dependency management
+- Both CSS files import EB Garamond from Google Fonts (network required on first
+  build)
+- Resumes: A4, 11mm/15mm margins. Letters: US Letter, 1in margins. Resume A4 was
+  inherited from the resume.io export the design was cloned from; a switch to US
+  Letter was tried 2026-08-26 and rejected — Letter is 18mm shorter, and the
+  densest resumes (the ones clamped at the 10pt fit floor) overflow to 2 pages.
+  Revisit only alongside a lower `--min-pt` or content trims.
+- Outputs are never committed (`_output/` is gitignored in the content project)

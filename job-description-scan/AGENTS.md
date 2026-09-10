@@ -1,0 +1,333 @@
+# AGENTS.md
+
+This file provides guidance to Claude Code when working with the
+job-description-scan pipeline.
+
+## Engine here, case config in the consuming project
+
+This repo holds only the generic engine (the `job_description_scan/` package:
+board clients, pipeline, ranking). Everything case-specific lives in the
+consuming (private) content project and never here:
+
+- `scans/<company>.py` — per-target scan configs (which board, extraction
+  schemas, filters, ranking ladders). See `examples/example_scan.py` for a
+  sanitized template.
+- reference docs passed via `system_context_files` (e.g. a leveling framework)
+- `_output/` — scan/rank results (gitignored in the content project)
+
+The engine is installable (hatchling build-system): the content project depends
+on it via a uv path/git source. All commands below run **from the content
+project root**, whose cwd provides the `scans.` package (the CLI does
+`sys.path.insert(0, cwd)`).
+
+## Setup (in the content project)
+
+```bash
+uv sync
+export ANTHROPIC_API_KEY=...      # or use direnv (.envrc, gitignored)
+```
+
+No external system dependencies.
+
+**When the API key is managed by direnv**, Claude Code's Bash tool runs
+non-interactive shells and will NOT auto-load `.envrc` on `cd`. Wrap any
+LLM-bound command with `direnv exec .` to inject the environment:
+
+```bash
+direnv exec . uv run python -m job_description_scan --scan scans.acme
+```
+
+## Invocation
+
+```bash
+uv run python -m job_description_scan --scan scans.acme
+# Optional flags:
+#   --resume _output/resumes/<rendered-variant>.md    # comparison pass
+#   --model claude-haiku-4-5                          # override scan default
+#   --out _output/acme.jsonl                          # default: _output/<scan_tail>.jsonl
+#   --limit 5                                         # smoke test
+#   --concurrency 20                                  # max concurrent LLM calls (default 20)
+#   --no-prefilter                                    # bypass the scan's cheap-model prefilter
+```
+
+**Point `--resume` at a rendered resume, not a Jinja template.** The pipeline
+reads the resume file verbatim into the (cached) system prompt — no Jinja
+rendering. If the resume source is a template (`{% if location %}` etc.), the
+directives would reach the LLM literally and location/relocation would be
+absent. Use the instantiated artifact produced by resume-printer's build
+(`_output/resumes/<variant>.md`), so location and relocation frontmatter
+actually inform the comparison/fit tier. Re-run the build after editing the
+resume.
+
+## Adding a new scan (in the content project)
+
+1. Copy `examples/example_scan.py` to `scans/<name>.py`
+2. Edit the `Extraction` and (optional) `Comparison` Pydantic classes to match
+   the role family you want to characterize
+3. Edit the `scan = Scan(...)` block: source board (`greenhouse`, `ashby`,
+   `lever`, `workday`, `smartrecruiters`, `phenom`, `eightfold`, `pinpoint`,
+   `manatal`, or `adp` — all ten implemented), slug, model. Slug formats: the
+   big three use the board's URL slug; `pinpoint` uses the tenant subdomain of
+   `<tenant>.pinpointhq.com` (one-shot: verify with
+   `curl https://<tenant>.pinpointhq.com/postings.json` — a wrong tenant 404s);
+   `manatal` uses the careers-page.com portal slug (paginated one-shot: verify
+   with `curl https://api.manatal.com/open/v3/career-page/<slug>/jobs/` — a
+   wrong slug 404s); `workday` uses `"hostprefix/site"` (e.g.
+   `"acme.wd5/Acme_Careers"`; a hostprefix containing `.myworkday` is taken as a
+   full host, covering `myworkdaysite.com` tenants); `smartrecruiters` uses the
+   API company identifier, which sometimes differs from the careers-site slug —
+   a wrong identifier returns `totalFound: 0` and the client raises on it, so
+   verify with `curl https://api.smartrecruiters.com/v1/companies/<id>/postings`
+   first; `phenom` uses the branded careers-site host (e.g. `"careers.acme.org"`
+   — verify it's really Phenom with
+   `curl -X POST https://<host>/widgets -H 'Content-Type: application/json' -d '{"ddoKey":"refineSearch","from":0,"size":1,"jobs":true}'`;
+   the client raises on 0 postings); `eightfold` uses `"host/domain"` (e.g.
+   `"searchcareers.acme.com/acme.com"` — the careers host plus the `domain`
+   query param from the site's own config; verify with
+   `curl "https://<host>/api/pcsx/search?domain=<domain>&start=0"`; the client
+   raises on 0 postings, and the classic `/api/apply/v2/jobs` endpoint answering
+   "Not authorized for PCSX" is expected on these deployments); `adp` uses the
+   myjobs.adp.com site path segment (`myjobs.adp.com/<slug>/cx/job-listing`,
+   list-then-detail: verify with
+   `curl https://myjobs.adp.com/public/staffing/v1/career-site/<slug>` — a wrong
+   slug answers 400 "Careersite not found"; note ADP tenants leave structured
+   locations empty, so pair with `location_filter=None` and let the prefilter
+   geography clause cut). Phenom and Eightfold front a separate ATS, so a
+   company may have e.g. a Workday tenant whose own listing surface is empty
+   while the branded site carries the real board
+4. Run: `uv run python -m job_description_scan --scan scans.<name>`
+
+Pydantic `Field(description=...)` strings flow into the JSON schema sent to the
+LLM, so use them to guide extraction at the field level.
+
+## Adding a new board
+
+1. Create `job_description_scan/boards/<name>.py` with a class implementing the
+   `BoardClient` protocol — `iter_postings() -> Iterable[Posting]` plus
+   `fetch_postings(ids) -> Iterable[Posting]` (the ranking join's targeted
+   re-fetch). One-shot boards implement the latter as a one-line delegation to
+   `fetch_by_walk` (a filtered full walk — the listing is one cheap request);
+   list-then-detail boards do one detail GET per id, skipping delisted ids
+   loudly (see `boards/workday.py`)
+2. Register the class in `boards/__init__.py`'s `make_client` factory and add
+   the kind to the `BoardKind` Literal in `config.py`
+3. Map the URL pattern and response shape to
+   `Posting(id, title, location, content_text, url, raw)`
+4. If the board is list-then-detail (the list response carries no job body, so
+   content costs one HTTP GET per posting), accept the optional
+   `location_filter` constructor param and skip the detail GET for postings
+   whose list-row location can't match (see `boards/workday.py`). Still yield
+   every posting — `pipeline.run_scan` applies the authoritative filter, so
+   `_filtered` counts stay identical across boards. One-shot boards don't take
+   the param.
+
+## Architecture
+
+- **Board fetch**: `boards/<kind>.py` → `Posting` dataclass. No deterministic
+  title filtering; every posting flows to the LLM unless excluded by an optional
+  `location_filter` or the optional cheap-model `prefilter` (see below).
+  `StaticClient` (boards/**init**.py) is an in-memory `BoardClient` over
+  pre-fetched postings — for cached API pulls (paid sources must never hide
+  behind `iter_postings`) and tests.
+- **LLM pipeline**: `pipeline.py` builds a cached system prompt (instructions +
+  schema + reference docs + optional resume), then issues a single composed-
+  schema `client.messages.parse(...)` call per posting.
+- **Output**: JSONL via `output.py`.
+
+Per-scan inputs (`config.Scan`):
+
+- `source`: `BoardSource(kind, slug)` — any kind in `config.BoardKind`
+- `extraction`: Pydantic class for JD-only facts (always populated)
+- `comparison`: optional Pydantic class for fit/gap fields (populated when
+  `--resume` provided)
+- `system_context_files`: list of paths inlined into the cached system prompt
+  (e.g. a leveling framework the scan's level taxonomy refers to)
+- `model`: Anthropic model ID (default `claude-haiku-4-5`)
+- `location_filter`: optional `re.Pattern` applied to `Posting.location` before
+  the LLM call. Postings that don't match are skipped entirely (no extraction
+  cost). See `examples/example_scan.py`. Title content is never filtered
+  deterministically — only location is, since location is structured metadata
+  while titles encode role nuance worth letting a model judge (which is what
+  `prefilter` is for). For the list-then-detail boards (`workday`,
+  `smartrecruiters`, `phenom`, `eightfold`) the filter is additionally pushed
+  down into the client to skip per-posting detail GETs; `_filtered` counts are
+  unchanged, and note `--limit` caps LLM calls, not these HTTP fetches.
+  **Workday gotcha**: a single-location list row is bare "City, ST" with no
+  country, so a country-anchored regex (`United States`) prefilters everything
+  as non-matching — write Workday filters against city/state/"Remote" forms.
+  Multi-location rows ("2 Locations") are always detail-resolved to the full
+  location set (city + country descriptors) before filtering, so they're safe
+  either way.
+- `prefilter`: optional `Prefilter(criterion, model, batch_size, title_precut)`
+  — a cheap-model triage stage between `location_filter` and extraction, for
+  scans over boards where relevant roles are a small minority (a regex can't
+  express "plausibly technical", a cheap model can). Batches of `batch_size`
+  title+location lines (default 40) go to `model` (default `claude-sonnet-4-6`);
+  the case-supplied `criterion` text rides verbatim in the prompt. Postings
+  judged out of scope are dropped before extraction and emitted as `_filtered`
+  audit rows with `_filter_stage: "prefilter"` and the model's one-line
+  `_prefilter_reason` — skim these to validate the criterion. The optional
+  `title_precut` regex drops matching titles first, free
+  (`_filter_stage: "title_precut"`). **Recall-biased and fail-open**: the prompt
+  says keep-on-uncertain, ids are echoed back to detect misalignment, and any
+  failure (batch call error, unechoed id) keeps its postings — a false drop is
+  unrecoverable, a false keep costs one extraction call. Stage order is
+  `location_filter` → `--limit` → `prefilter` → extraction, so `--limit` caps
+  _all_ LLM spend and smoke runs stay cheap. Aggregate triage usage/warnings
+  print at the end of the run (`prefilter:` / `prefilter WARN:` lines);
+  `--no-prefilter` bypasses the stage without editing the scan.
+
+## Concurrency
+
+LLM calls run concurrently via `anthropic.AsyncAnthropic`. Default
+`--concurrency 20`; bump freely if your rate limits allow (Haiku tier of 10K RPM
+/ 10M ITPM gives ~2 orders of magnitude of headroom at typical scan sizes).
+
+**Lead-then-fan-out**: call #1 is awaited sequentially so it writes the prompt
+cache; the rest fan out under a `Semaphore(concurrency)`. Without this, every
+concurrent call would pay `cache_creation_input_tokens` and cost would balloon
+~3–5×.
+
+**Row order** in the output JSONL is completion-order, not board-order. For
+deterministic ordering, post-process with
+`jq -s 'sort_by(.posting.id)' _output/<scan>.jsonl`.
+
+**Retries** are handled by the SDK (`max_retries=8` set in the pipeline), which
+retries 408/409/429/5xx with exponential backoff. No external retry library
+needed — adding one duplicates the SDK's behavior.
+
+## Caching
+
+The system prompt is uniform across all postings in a single invocation, so
+Anthropic prompt caching kicks in from posting 2 onward. Verify by inspecting
+`_meta.cache_read_input_tokens > 0` in the output JSONL.
+
+Minimum cacheable prefix is 4096 tokens on Haiku 4.5 and 2048 on Sonnet 4.6.
+Small system prompts (no resume, short reference docs) may silently fall under
+the threshold and cache nothing — the cost is still small at this scale but
+check the meta if you see no cache reads.
+
+## Output format
+
+JSONL, one row per posting:
+
+```json
+{
+  "posting": { "id": "...", "title": "...", "location": "...", "url": "..." },
+  "result": { "extraction": { ... }, "comparison": { ... } },
+  "_meta": {
+    "model": "...",
+    "input_tokens": N,
+    "output_tokens": N,
+    "cache_creation_input_tokens": N,
+    "cache_read_input_tokens": N
+  }
+}
+```
+
+`result.comparison` is absent when `--resume` was not supplied or the scan did
+not define a `Comparison` class. A row may instead carry an `error` field if the
+LLM call failed; the pipeline continues past it.
+
+## Ranking pass (second pass)
+
+Pointwise `fit_tier` triages but orders poorly _within_ a tier. To pick a
+best-of ordering, `ranking.py` runs an **LLM-as-judge pairwise tournament** over
+one role family's strong+stretch pool and fits **Bradley-Terry** (`choix`) to
+the outcomes. Run it once per role family — families are not comparable
+head-to-head.
+
+```bash
+# preview cost (no API spend): rows -> clusters -> pairings -> judge calls
+uv run python -m job_description_scan.ranking \
+  --scan scans.acme --results _output/acme.jsonl \
+  --resume _output/resumes/<rendered-variant>.md \
+  --ladder swe --dry-run
+
+# run a ladder (round-robin default; --schedule swiss is cheaper for large pools)
+… --ladder swe
+… --ladder post_sales_se
+#   --ladder all            # every ladder in the scan's RankConfig
+#   --no-order-swap         # halve calls (drops position-bias mitigation)
+#   --judge-model …         # default claude-opus-5; override for pricier tiers
+#   --dedup-threshold 90    # opt into fuzzy dedup merging (see Mechanics);
+#                           # default: only string-identical cores merge
+#   --topk 5,10,20          # report bootstrap top-k stability per swiss round
+#   --until-stable          # swiss: stop rounds once every --topk prefix is
+#                           # stable (needs --topk)
+```
+
+**Case config lives in the scan module**, not the engine. A scan defines
+`ranking = RankConfig(ladders=[Ladder(...)])` (see `examples/example_scan.py`):
+one `Ladder` per role family, each selecting `roles`/`tiers`, an optional
+`exclude_title` regex (e.g. new-grad/internship), and a `label` role-framing
+string slotted into the otherwise-generic judge prompt. The engine reads this
+and stays free of any case-specific strings.
+
+Mechanics:
+
+- **Content dedup**: the scan JSONL has no JD body, so the ranker re-fetches
+  content via `client.fetch_postings(<pool ids>)` and joins on `posting.id`.
+  Every client implements the method: list-then-detail boards (`workday`,
+  `smartrecruiters`, `phenom`, `eightfold`) do targeted detail GETs (their
+  posting ids are directly addressable detail paths — a full walk is one GET per
+  posting, 10+ minutes on a ~2k board with no location_filter pushdown);
+  one-shot boards derive it from the cheap full walk (`fetch_by_walk`). Postings
+  delisted since the scan surface as `dropped` either way. It then strips the
+  prefix/suffix shared across the pool (company blurb + EEO/benefits tail) and
+  merges postings whose remaining cores are string-identical — collapsing
+  location-variant clones into one competing entry; the canonical rep carries
+  the member locations/ids. Passing `--dedup-threshold N` additionally merges
+  near-duplicates with `rapidfuzz` `token_set_ratio ≥ N` (e.g. 90). Fuzzy
+  merging is opt-in because it over-merges: distinct roles sharing heavy
+  boilerplate (different teams, Senior/non-Senior variants) can clear the bar —
+  a score of 100 does not even imply identical text (token_set_ratio ignores
+  order/multiplicity and scores near-subsets 100). Every fuzzy merge is logged
+  (`merge: <id> <title> -> ...`); inspect these in `--dry-run` before spending.
+  More clusters → more judge calls (quadratic at round-robin), so fuzzy merging
+  or `--schedule swiss` may still pay on boards with many near-clones.
+- **Judge**: each pair is compared twice with A/B **swapped** (position-bias
+  mitigation; `--no-order-swap` to halve cost). Consistent winner → one edge;
+  disagreement → a tie (one edge each direction, which `choix` handles). The
+  resume + role label form a cached system prefix (same lead-then-fan-out +
+  caching as the scan pipeline, reused from `pipeline.py`). The judge is
+  **injectable**: `run_ladder(..., judge=)` takes any
+  `async (Candidate, Candidate) -> "A" | "B"` — the LLM judge is just the
+  default; the tests inject a seeded rng judge, and a human judge (terminal
+  prompts) can reuse the whole tournament unchanged.
+- **Schedule**: `round-robin` (default) compares all pairs; `swiss`
+  (`--schedule swiss`, `--rounds N`) is cheaper and concentrates comparisons
+  near the top for large pools.
+- **Top-k stability** (`--topk 5,10,20`): an anytime progress signal —
+  comparison choice stays k-free (swiss adjacency works every rank boundary at
+  once); k enters only as measurement. `topk_stability` bootstraps the judgment
+  log (resample → refit BT → does the top-k SET survive?) and extrapolates
+  judgments-to-stable from the k-boundary gap's z-score; printed per swiss round
+  (`--until-stable` stops rounds once every requested k is stable), once at the
+  end for round-robin. Caveat: a boundary a no-repeat schedule judged only once
+  plateaus below the threshold forever — plateau + growing estimate means "this
+  schedule can't certify k further", not "keep going". `closure_topk` is the
+  deterministic-judge (human oracle) variant: certification = transitive
+  judgment coverage of all top-vs-outside pairs, with est = missing adjacent
+  links; the referral-prioritizer's judge uses it.
+- **Output**: `_output/<scan>-rank-<role>.jsonl`, one row per cluster with
+  `rank`, `utility` (Bradley-Terry), `wins`/`losses`/`ties`, and the member
+  `locations`/`posting_ids`; plus a leaderboard to stdout.
+
+**Cost**: round-robin is `2·C(n,2)` judge calls — cheap for a small pool (~10
+clusters → ~90 calls), but a ~22-cluster pool is ~460 calls. Always `--dry-run`
+first; drop to `--no-order-swap` or `--schedule swiss` if that's hotter than you
+want.
+
+## Tests
+
+`uv run pytest` from this directory (pytest + respx come from the `dev`
+dependency group; `uv sync` installs them). Hermetic — no network, no LLM spend:
+the tournament tests drive `run_ladder` end-to-end with injected seeded-rng
+judges carrying a planted ground truth (`tests/test_ranking.py`), and the board
+clients replay synthetic recorded-shape fixtures through respx
+(`tests/test_boards_*.py`) — including the edges live APIs can't serve on
+demand: delisted postings (404s, phenom's 200-with-missing-"job"), empty-board
+fail-loud sentinels, pagination termination/dedupe, transient-error retry, and
+location_filter pushdown (no detail request for non-matching rows). Run before
+any `tools/` pin bump in the content project.
