@@ -91,7 +91,7 @@ is free.
 
 | Type   | Source dir | Template               | CSS          | Filter              | Page size | Output                         |
 | ------ | ---------- | ---------------------- | ------------ | ------------------- | --------- | ------------------------------ |
-| resume | `resumes/` | `template-resume.html` | `resume.css` | `filter-resume.lua` | A4        | `_output/resumes/*.{pdf,docx}` |
+| resume | `resumes/` | `template-resume.html` | `resume.css` | `filter-resume.lua` | US Letter | `_output/resumes/*.{pdf,docx}` |
 | letter | `letters/` | `template-letter.html` | `letter.css` | (none)              | US Letter | `_output/letters/*.pdf`        |
 
 ## Markdown Resume Format
@@ -155,9 +155,10 @@ Jane Doe
 - Python 3.14 pinned via `.python-version`; use `uv` for dependency management
 - Both CSS files import EB Garamond from Google Fonts (network required on first
   build)
-- Resumes: A4, 11mm/15mm margins. Letters: US Letter, 1in margins. Resume A4 was
-  inherited from the resume.io export the design was cloned from; a switch to US
-  Letter was tried 2026-08-26 and rejected — Letter is 18mm shorter, and the
-  densest resumes (the ones clamped at the 10pt fit floor) overflow to 2 pages.
-  Revisit only alongside a lower `--min-pt` or content trims.
+- Resumes: US Letter, 11mm/15mm margins. Letters: US Letter, 1in margins.
+  Resumes were A4 until 2026-09-15 (inherited from the resume.io export the
+  design was cloned from, never chosen); an earlier Letter attempt (2026-08-26)
+  was rejected because the densest resumes overflowed — the switch landed once
+  content restructuring got every active resume to 1 page (Letter is ~18mm
+  shorter than A4, ~4 lines at the 10pt fit floor).
 - Outputs are never committed (`_output/` is gitignored in the content project)

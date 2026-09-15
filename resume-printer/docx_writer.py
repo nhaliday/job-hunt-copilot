@@ -31,7 +31,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Emu, Mm, Pt, RGBColor, Twips
+from docx.shared import Emu, Inches, Mm, Pt, RGBColor, Twips
 from lxml import html as lhtml
 
 INK = "171717"
@@ -311,7 +311,7 @@ def write_docx(html_path, out_path, base_pt):
     doc = Document()
 
     sec = doc.sections[0]
-    sec.page_width, sec.page_height = Mm(210), Mm(297)  # A4, as resume.css @page
+    sec.page_width, sec.page_height = Inches(8.5), Inches(11)  # as @page
     sec.top_margin = sec.bottom_margin = Mm(11)
     sec.left_margin = sec.right_margin = Mm(15)
     sec.header_distance = sec.footer_distance = Emu(0)
