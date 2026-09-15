@@ -65,12 +65,12 @@ pandoc "$SRC/resumes/example.md" --lua-filter=filter-resume.lua --template=templ
    rebuilding):
    - **all**: `verify_pages.py` (warns if PDF exceeds 1 page; never fails the
      build)
-   - **resume**: `smoke_test` (pdftotext checks for ATS readability — section
-     headers, name, email, bullet markers, title/date alignment) +
-     `verify_lines.py` (pdfplumber confirms h2 separator lines; this one DOES
-     fail the build on mismatch) + `verify_docx.py` (structural DOCX check —
-     name, email, section headings, rule count, bullet count vs the markdown;
-     also fails the build on mismatch)
+   - **resume**: `smoke_test` (pdftotext checks for ATS readability — name,
+     email, bullet markers, title/date alignment) + `verify_lines.py`
+     (pdfplumber confirms h2 separator lines; this one DOES fail the build on
+     mismatch) + `verify_docx.py` (structural DOCX check — name, email, section
+     headings, rule count, bullet count vs the markdown; also fails the build on
+     mismatch)
    - **letter**: no extra checks beyond the page count (cover letters aren't
      ATS-filtered)
 

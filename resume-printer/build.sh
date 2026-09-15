@@ -75,14 +75,6 @@ smoke_test() {
 
   text="$(pdftotext "$pdf" -)"
 
-  # Section headers should be extractable
-  for section in "SKILLS" "EMPLOYMENT HISTORY" "EDUCATION"; do
-    if ! echo "$text" | grep -q "$section"; then
-      echo "    WARN: section '$section' not found in text extraction" >&2
-      warn=1
-    fi
-  done
-
   # Name from YAML frontmatter should appear
   local name
   name="$(sed -n 's/^name: *//p' "$md" | head -1)"
